@@ -1,0 +1,7 @@
+.env
+.cache
+TODO
+venv
+.idea
+__pycache__
+.spotify_caches

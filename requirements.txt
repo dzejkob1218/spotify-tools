@@ -1,0 +1,11 @@
+async-timeout==4.0.2
+charset-normalizer==3.0.1
+fuzzywuzzy==0.18.0
+Levenshtein==0.20.9
+lyricsgenius==3.0.1
+python-dotenv==0.21.1
+python-Levenshtein==0.20.9
+rapidfuzz==2.13.7
+redis==4.4.2
+six==1.16.0
+spotipy==2.22.1
