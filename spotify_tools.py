@@ -20,10 +20,11 @@ sp = SpotifySession()
 genius_session = GeniusSession()
 sp.authorize()
 
+# TODO: Replace global variables with a navigation class
 navigation_stack = []
 command_queue = []
 collections = []
-
+silent = False
 
 # TODO: Best way to avoid passing the session to every constructor
 # TODO: Argument chaining to avoid unnecessary menus
@@ -33,20 +34,21 @@ collections = []
 def update_navigation_stack(item):
     navigation_stack.append(item)
 
-    print(f"{'_' * 25}")
-    arrow = False
-    for item in navigation_stack:
-        if arrow:
-            print(" -> ", end="")
-        else:
-            arrow = True
-        if isinstance(item, List):
-            print(f"{type(item[0]).__name__ + 's'}", end="")
-        if isinstance(item, spotify.Object):
-            print(f"{item.name}", end="")
-        if isinstance(item, spotify.Track):
-            print(f" ({item.artists})", end="")
-    print()
+    if not silent:
+        print(f"{'_' * 25}")
+        arrow = False
+        for item in navigation_stack:
+            if arrow:
+                print(" -> ", end="")
+            else:
+                arrow = True
+            if isinstance(item, List):
+                print(f"{type(item[0]).__name__ + 's'}", end="")
+            if isinstance(item, spotify.Object):
+                print(f"{item.name}", end="")
+            if isinstance(item, spotify.Track):
+                print(f" ({item.artists})", end="")
+        print()
 
 
 def navigate_back():
@@ -79,7 +81,7 @@ def navigate_home_menu():
         print("Not logged in")
 
 
-def navigate(item):
+def navigate(item, silent=False):
     update_navigation_stack(item)
     if isinstance(item, List):
         navigate_list(item)
@@ -108,20 +110,21 @@ def navigate_list(items: List, start=0, number=None):
     # TODO: Add pagination
     total = len(items)
     end = total if not number or start + number > total else start + number
-    for i in range(start, end):
-        item = items[i]
-        name_in_quotes = '"' + item.attributes["name"] + '":'
-        # Note this starts indexing from 1 intentionally
-        print(
-            f"{str(i + 1) + ':':5}", end=""
-        )  # TODO: Replace the 5-space gap here with the smallest uniform gap possible
-        print(f"{name_in_quotes}")
+    if not silent:
+        for i in range(start, end):
+            item = items[i]
+            name_in_quotes = '"' + item.attributes["name"] + '":'
+            # Note this starts indexing from 1 intentionally
+            print(
+                f"{str(i + 1) + ':':5}", end=""
+            )  # TODO: Replace the 5-space gap here with the smallest uniform gap possible
+            print(f"{name_in_quotes}")
     take_input()
 
 
 # TODO: Separate presenting choices or taking input for a list and a menu
 def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
-    global command_queue
+    global command_queue, silent
 
     # Update available actions with type-specific defaults
     actions = {}
@@ -136,12 +139,14 @@ def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
         if isinstance(item, item_type):
             actions.update(AUTHORIZED_ACTIONS[item_type])
 
+
     # Display the available choices
     if loaded_lists or unloaded_lists:
         print_list_choices(loaded_lists, unloaded_lists)
     if actions:
         print_choices(actions.keys())
     letterize_menu(actions, loaded_lists, unloaded_lists)
+
 
     # Take user input if none is queued
     while not command_queue:
@@ -159,9 +164,9 @@ def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
     elif unloaded_lists and i in unloaded_lists:
         navigate(unloaded_lists[i]())
     elif (
-        navigation_stack
-        and isinstance(item := navigation_stack[-1], List)
-        and command.isnumeric()
+            navigation_stack
+            and isinstance(item := navigation_stack[-1], List)
+            and command.isnumeric()
     ):
         index = int(command)
         # All lists displayed are indexed starting from 1, this warns the user if input is '0'.
@@ -175,13 +180,6 @@ def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
         else:
             navigate(item[int(command) - 1])
     print("Invalid input.")
-
-
-def print_details(
-    details,
-):  # resource: classes.spotify_objects.spotify_resource.SpotifyResource):
-    for detail in details:
-        print(f"{detail}:{'.' * (30 - len(detail))}{details[detail]}")
 
 
 def letterize_menu(*menus: Dict):
@@ -198,8 +196,23 @@ def print_current_user():
     navigate(sp.fetch_user())
 
 
-def show_details():
-    pass
+def print_details():
+    item = navigation_stack[-1]
+    item.load_features()
+    item.load_analysis()
+
+    if isinstance(item, spotify.Track):
+        for i in item.attributes:
+            value = item.attributes[i]
+            if isinstance(value, float):
+                value = round(value, 2)
+            print(f"{i} {'.' * (25 - len(i))} {value}", end='')
+            if i in item.confidence_scores:
+                print(f" ({round(item.confidence_scores[i],2)}) ", end='')
+            print()
+
+    input()
+    navigate(navigation_stack.pop())
 
 
 def show_lyrics():
@@ -213,7 +226,8 @@ def show_lyrics():
 def open_image():
     item = navigation_stack[-1]
     webbrowser.open(item.image, new=2)
-    navigate(navigation_stack.pop())
+    print("Opening cover image in browser...")
+    navigate(navigation_stack.pop(), silent=True)
 
 
 def print_help():
@@ -310,7 +324,7 @@ TYPE_ACTIONS = {
         "add": None,
     },
     spotify.Resource: {
-        "details": show_details,
+        "details": print_details,
     },
     spotify.Collection: {"filter": None, "save": None},
     spotify.User: {},
@@ -324,15 +338,13 @@ AUTHORIZED_ACTIONS = {
     type(None): {"user": print_current_user, "playback": navigate_playback},
     List: {},
     spotify.Object: {"back": navigate_back, "load": load_object, "add": None},
-    spotify.Resource: {
-        "play": None,
-        "queue": None,
-    },
+    spotify.Resource: {},
     spotify.Collection: {"filter": None, "save": None},
     spotify.User: {"follow": None},
-    spotify.Playlist: {"heart": None},
-    spotify.Album: {"heart": None},
-    spotify.Track: {"lyrics": show_lyrics, "image": open_image, "heart": None},
+    spotify.Artist: {"play": None, "queue": None},
+    spotify.Playlist: {"heart": None, "play": None, "queue": None},
+    spotify.Album: {"heart": None, "play": None, "queue": None},
+    spotify.Track: {"lyrics": show_lyrics, "image": open_image, "heart": None, "play": None, "queue": None},
 }
 
 # Help text displayed always

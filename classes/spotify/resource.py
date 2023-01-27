@@ -24,6 +24,13 @@ class Resource(spotify.Object):
         """
         pass
 
+    def load(self):
+        """
+
+
+        """
+        pass
+
     def get_img_urls(self, raw_data):
         """
         Extract urls to images for this object from its raw data.

@@ -1,4 +1,5 @@
 import classes.spotify as spotify
+import helper
 from helpers.parser import parse_artists, sort_image_urls
 
 
@@ -11,10 +12,15 @@ class Track(spotify.Resource):
     def __init__(self, sp, raw_data, audio_features=None):
         super().__init__(sp, raw_data)
         self.lyrics = None
+        self.features_loaded = False
+        self.confidence_scores = None
+
+        self.sp = sp
 
     def load_details(self, raw_data):
         # Load attributes from Spotify.track
         # TODO: Are the images ever missing?
+        # TODO: Wouldn't it be better to just create the parent object?
         image_urls = (
             sort_image_urls(raw_data["album"]["images"])
             if "images" in raw_data["album"]
@@ -43,51 +49,43 @@ class Track(spotify.Resource):
             self.lyrics = genius_session.get_lyrics(self)
         return self.lyrics
 
-    """
-    Legacy code:
-        # Load parent attributes from Spotify.track
-        # In this case the parent is the album
-        self.parent = {
-            'uri': self.spotify_object['album']['uri'],
-            'name': self.spotify_object['album']['name'],
-            'miniature': self.attributes['miniature'],
-            'artists': self.attributes['artists'],
-        }
-
-        # Load attributes from track features
-        if not self.audio_features:
-            self.audio_features = self.sp.fetch_track_features([self.uri])[0]
-
-        if self.audio_features:
-            self.attributes.update({
-                'valence': self.audio_features['valence'] * 100,
-                'energy': self.audio_features['energy'] * 100,
-                'dance': self.audio_features['danceability'] * 100,
-                'speech': self.audio_features['speechiness'] * 100,
-                'acoustic': self.audio_features['acousticness'] * 100,
-                'instrumental': self.audio_features['instrumentalness'] * 100,
-                'live': self.audio_features['liveness'] * 100,
-                'tempo': self.audio_features['tempo'],
-                'key': self.audio_features['key'],  # this is the root note of the song's key (used for filtering)
-                'mode': self.audio_features['mode'],
-                # this is the mode itself for sorting songs into major and minor keys (used for filtering)
-                # TODO: key_name probably doesn't need to be here
-                'key_name': track_key(self.audio_features['key'], self.audio_features['mode']),
-                # this is a string representation of the song's key including it's mode (used for display)
-                'signature': self.audio_features['time_signature'],
-            })
-
-
-    def get_lyrics(self):
-        # Load confidence ratings from audio analysis 
-        # Spotify isn't perfect at guessing some features of a song and only commonly used keys and time signatures are recognized, so some attributes comes with a confidence rating
-        # Making a request for each song takes too much time and there is no endpoint in spotify API for getting multiple songs analysed
-        # Later make this data load only when the song's attributes show up
-        audio_analysis = self.sp.connection.audio_analysis(self.uri)['track']
+    def load_features(self):
+        """Add audio features to track attributes."""
+        if self.features_loaded:
+            return
+        audio_features = self.sp.fetch_track_features([self.uri])[0]
+        self.features_loaded = True
         self.attributes.update({
-            'tempo_confidence': audio_analysis['tempo_confidence'],
-            'key_confidence': audio_analysis['key_confidence'],
-            'mode_confidence': audio_analysis['mode_confidence'],
-            'signature_confidence': audio_analysis['time_signature_confidence'],
+            'valence': audio_features['valence'] * 100,
+            'energy': audio_features['energy'] * 100,
+            'dance': audio_features['danceability'] * 100,
+            'speech': audio_features['speechiness'] * 100,
+            'acoustic': audio_features['acousticness'] * 100,
+            'instrumental': audio_features['instrumentalness'] * 100,
+            'live': audio_features['liveness'] * 100,
+            'tempo': audio_features['tempo'],
+            'key': audio_features['key'],  # this is the root note of the song's key (used for filtering)
+            'mode': audio_features['mode'],
+            # this is the mode itself for sorting songs into major and minor keys (used for filtering)
+            # TODO: key_name probably doesn't need to be here
+            # 'key_name': track_key(self.audio_features['key'], self.audio_features['mode']),
+            # this is a string representation of the song's key including it's mode (used for display)
+            'signature': audio_features['time_signature'],
         })
-    """
+
+    def load_analysis(self):
+        """
+        Add confidence ratings from audio analysis to track attributes.
+
+        Spotify isn't perfect at guessing some features of a song and only commonly used keys and time signatures are recognized, so some attributes comes with a confidence rating.
+        The analysis endpoint is slow and returns a single song at at time.
+        """
+        if self.confidence_scores:
+            return
+        audio_analysis = self.sp.connection.audio_analysis(self.uri)['track']
+        self.confidence_scores = {
+            'tempo': audio_analysis['tempo_confidence'],
+            'key': audio_analysis['key_confidence'],
+            'mode': audio_analysis['mode_confidence'],
+            'signature': audio_analysis['time_signature_confidence'],
+        }
