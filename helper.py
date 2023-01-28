@@ -1,10 +1,12 @@
 from typing import List, Dict
 import classes.spotify as spotify
-
+import langdetect
 """
 Module for functions that should go somewhere else eventually
 """
 
+def detect_language(text):
+    return langdetect.detect_langs(text)
 
 def show_dict(d):
     for i in d:

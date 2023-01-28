@@ -104,9 +104,13 @@ class SpotifySession:
                 self.connection.start_playback(uris=uris)
 
     # GENERAL SCOPE
-    # Takes a list of track uris and returns a list of audio features
     # TODO: Test that this works on a static playlist
     def fetch_track_features(self, uris):
+        """
+        Returns a list of audio features for a list of track uris.
+
+        Each request can fetch up to 100 tracks, so this is more efficient to do in bulk.
+        """
         result = []
         total_tracks = len(uris)
         # Run a loop requesting a 100 tracks at a time
@@ -114,7 +118,7 @@ class SpotifySession:
             chunk = uris[(i * 100) : (i * 100) + 100]
             features = self.connection.audio_features(chunk)
             result += features
-        # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry
+        # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
         if not len(result) == total_tracks:
             raise Exception("Failed to fetch track features for all tracks")
         return result

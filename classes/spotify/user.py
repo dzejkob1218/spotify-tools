@@ -22,7 +22,7 @@ class User(spotify.Resource, spotify.Collection):
         return self.children
 
     # Details
-    def load_details(self, raw_data):
+    def parse_details(self, raw_data):
         self.attributes = {
             # TODO: Images?
             "uri": raw_data["uri"],

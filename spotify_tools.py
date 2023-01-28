@@ -4,6 +4,7 @@ import webbrowser
 import tracemalloc
 from dotenv import load_dotenv
 from typing import Dict, List
+from langcodes import Language
 
 # Test main file that will not be present in the library
 import classes.spotify as spotify
@@ -197,18 +198,19 @@ def print_current_user():
 
 
 def print_details():
+    # TODO: Add nicer formatting for some track details
     item = navigation_stack[-1]
-    item.load_features()
-    item.load_analysis()
+    confidence_scores = item.get_confidence_scores()
+    details = {**item.attributes, **item.get_features(), 'lyrics': bool(item.lyrics), 'language': item.language}
 
     if isinstance(item, spotify.Track):
-        for i in item.attributes:
-            value = item.attributes[i]
+        for i in details:
+            value = details[i]
             if isinstance(value, float):
                 value = round(value, 2)
             print(f"{i} {'.' * (25 - len(i))} {value}", end='')
-            if i in item.confidence_scores:
-                print(f" ({round(item.confidence_scores[i],2)}) ", end='')
+            if i in confidence_scores:
+                print(f" ({round(confidence_scores[i],2)}) ", end='')
             print()
 
     input()
@@ -216,10 +218,15 @@ def print_details():
 
 
 def show_lyrics():
-    item = navigation_stack[-1]
-    lyrics = item.get_lyrics(genius_session)
+    item: spotify.Track = navigation_stack[-1]
+    lyrics = item.get_lyrics()
     print("\n" + lyrics)
-    input()
+
+    if language := item.get_language():
+        print(language)
+        language_name = Language.get(language[0].lang).display_name()
+        print(language_name)
+        input()
     navigate(navigation_stack.pop())
 
 
@@ -309,8 +316,11 @@ def print_list_choices(loaded: Dict, unloaded: Dict):
 
 
 def load_object():
-    """Forces the object to download all available data about its children."""
-    pass
+    """Force the object to download all available data about itself and its children."""
+    item: spotify.Object = navigation_stack[-1]
+    item.load()
+    print("Loading object data...")
+    navigate(navigation_stack.pop(), silent=True)
 
 
 # Defines valid commands for navigating different types of objects.
@@ -329,7 +339,7 @@ TYPE_ACTIONS = {
     spotify.Collection: {"filter": None, "save": None},
     spotify.User: {},
     spotify.Playlist: {},
-    spotify.Track: {"lyrics": show_lyrics, "image": open_image},
+    spotify.Track: {"image": open_image},#, "lyrics": show_lyrics },
     # TODO: Add Artist and Album
 }
 
@@ -344,7 +354,7 @@ AUTHORIZED_ACTIONS = {
     spotify.Artist: {"play": None, "queue": None},
     spotify.Playlist: {"heart": None, "play": None, "queue": None},
     spotify.Album: {"heart": None, "play": None, "queue": None},
-    spotify.Track: {"lyrics": show_lyrics, "image": open_image, "heart": None, "play": None, "queue": None},
+    spotify.Track: {"heart": None, "play": None, "queue": None},
 }
 
 # Help text displayed always
@@ -465,6 +475,7 @@ HELP_TEXT = {
             "-refresh",
             "Clear the cached lyrics and make a new request to Genius Lyrics.",
         ),
+        ("-languages", "Show the probabilities for different languages."),
     ],
     "new": [
         "Creates a new collection",

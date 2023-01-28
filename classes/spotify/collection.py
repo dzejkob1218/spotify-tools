@@ -53,7 +53,6 @@ class Collection(spotify.Object):
                 return match
         return None
 
-
 """
 Legacy Code:
     # Takes a list of attribute names and returns average, minimum and maximum values for sub-collections
