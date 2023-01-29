@@ -3,9 +3,11 @@ import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
 
-import helper
-from helpers.parser import uri_to_url, filter_false_tracks
-from helper import parse_resource
+import parser
+
+import helpers
+from helpers import uri_to_url, filter_false_tracks
+from .parser import Parser
 
 """
 Responsible for connecting and exchanging data with spotify
@@ -37,6 +39,7 @@ class SpotifySession:
         # This initializes an unauthorized connection - only endpoints not accessing user info will work.
         self.connection: Spotify = Spotify(auth_manager=SpotifyClientCredentials())
         self.connected_user = None  # cache for currently connected user's data # TODO: Replace this with a user class instance
+        self.parser = Parser(self)
 
     def remove_cache(self):
         os.remove(self.cache_handler.cache_path)
@@ -72,7 +75,7 @@ class SpotifySession:
             # TODO: Make this load all playlists instead of first 50
             result = self.connection.current_user_playlists(limit=50)
             if "items" in result:
-                return [parse_resource(self, item) for item in result["items"]]
+                return [self.parser.get_resource(item) for item in result["items"]]
 
     def fetch_user_playlists(self, user):
         """Return all publicly visible playlists from the library of user with given id."""
@@ -80,20 +83,23 @@ class SpotifySession:
             # TODO: Make this load all playlists instead of first 50
             result = self.connection.user_playlists(user.id, limit=50)
             if "items" in result:
-                return [parse_resource(self, item) for item in result["items"]]
+                return [self.parser.get_resource(item) for item in result["items"]]
 
     def fetch_user(self, force_update=False):
         if self.authorized:
             if not self.connected_user or force_update:
                 user_data = self.connection.current_user()
-                self.connected_user = parse_resource(self, user_data)
+                self.connected_user = self.parser.get_resource(user_data)
             return self.connected_user
 
     def fetch_currently_playing(self):
         if self.authorized:
-            current_track = self.connection.currently_playing()["item"]
+            playback = self.connection.currently_playing()
+            if not playback:
+                return None
+            current_track = playback["item"]
             # TODO: Make this not skip the context (i.e. the playlist) of playback
-            return helper.parse_resource(self, current_track)
+            return self.parser.get_resource(current_track)
 
     def play(self, uris, queue=False):
         if self.authorized:
@@ -124,23 +130,55 @@ class SpotifySession:
         return result
 
     # TODO: Test that this works on a static playlist
-    # Takes a playlist ID and returns a list of all tracks within it
-    def fetch_playlist_tracks(self, collection_uri, total_tracks, start=0):
+    def fetch_playlist_tracks(self, playlist_uri, total_tracks, start=0):
+        """Download all tracks from spotify for a playlist URI."""
         playlist_tracks = []
+        # TODO: API reference quotes 50 as the limit for one request, but the old 100 seems to work fine - check other endpoints
         # Run a loop requesting a 100 tracks at a time
         for i in range(start, -(-total_tracks // 100)):
             response = self.connection.playlist_items(
-                collection_uri, offset=(i * 100), limit=100
+                playlist_uri, offset=(i * 100), limit=100
             )
             playlist_tracks += filter_false_tracks(
                 response["items"]
             )  # remove local tracks and podcasts from the result
-        return [helper.parse_resource(self, track) for track in playlist_tracks]
+        return [self.parser.get_resource(track) for track in playlist_tracks]
+
+    # TODO: Fetch functions for different types are extremely similar
+    def fetch_artist_albums(self, artist_uri):
+        artist_albums = []
+        # Maximum albums for one request is 50
+        response = self.connection.artist_albums(artist_uri, limit=50)
+        # TODO: Temporary screening
+        if response['total'] >= 50:
+            raise Exception(f"Found artist with more than 50 albums: {artist_uri}")
+        for item in response['items']:
+            if item['album_group'] != 'album' or item['album_type'] != 'album':
+                helpers.show_dict(item)
+            artist_albums.append(self.parser.get_resource(item))
+        return artist_albums
+
+    def fetch_album_tracks(self, album_uri):
+        album_tracks = []
+        # Maximum tracks for one request is 50
+        response = self.connection.album_tracks(album_uri, limit=50)
+        # TODO: Temporary screening
+        if response['total'] >= 50:
+            raise Exception(f"Found album with more than 50 tracks: {album_uri}")
+        for item in response['items']:
+            if item['track_group'] != 'track' or item['track_type'] != 'track':
+                helpers.show_dict(item)
+            album_tracks.append(self.parser.get_resource(item))
+        return album_tracks
 
     def search(self, query, search_type):
         results = self.connection.search(q=query, type=search_type, limit=50)
         return results[search_type + "s"]
 
-    def fetch_item(self, uri):
+    def fetch_raw_item(self, uri):
         url = uri_to_url(uri)
         return self.connection._get(url)
+
+    def fetch_item(self, uri):
+        url = uri_to_url(uri)
+        return self.parser.get_resource(self.connection._get(url))

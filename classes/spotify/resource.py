@@ -9,7 +9,6 @@ Represents a Spotify resource that has a uri and can be retrieved from Spotify A
 class Resource(spotify.Object):
     def __init__(self, sp, raw_data=None):
         self.attributes = {}  # Static attributes reflecting an existing spotify resource, added to __dict__
-        self.features = {}  # Average values of track features
         self.parse_details(raw_data)
         self.__dict__.update(self.attributes)
 

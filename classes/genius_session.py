@@ -1,4 +1,4 @@
-from helpers.parser import uniform_title
+from helpers import uniform_title
 from fuzzywuzzy import fuzz
 from lyricsgenius import Genius
 import os

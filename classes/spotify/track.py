@@ -1,6 +1,6 @@
 import classes.spotify as spotify
-import helper
-from helpers.parser import parse_artists, sort_image_urls
+import helpers
+from helpers import parse_artists, sort_image_urls
 from classes.genius_session import GeniusSession
 
 class Track(spotify.Resource):
@@ -9,13 +9,18 @@ class Track(spotify.Resource):
     - Recommended (track)
     """
 
-    def __init__(self, sp, raw_data, audio_features=None):
+    def __init__(self, sp, raw_data, artists, album):
         super().__init__(sp, raw_data)
         self.lyrics = None
         self.language = None
         self.confidence_scores = None
-
         self.sp = sp
+        self.artists = artists
+        self.album = album
+        self.features = {}
+
+        print(f"CREATING TRACK {self.name}")
+
 
     def load(self, recursive=False):
         """
@@ -29,6 +34,7 @@ class Track(spotify.Resource):
         self.get_language()
 
     def get_features(self):
+        # TODO: Measure performance cost of loading features with track by default
         """Add audio features to track attributes."""
         if not self.features:
             print(f"TRACK {self.name} LOADING FEATURES")
@@ -46,7 +52,7 @@ class Track(spotify.Resource):
         if self.lyrics == 'No lyrics available.':
             return None
         if not self.language:
-            self.language = helper.detect_language(self.lyrics)
+            self.language = helpers.detect_language(self.lyrics)
         return self.language
 
     def get_confidence_scores(self):
@@ -78,16 +84,19 @@ class Track(spotify.Resource):
 
         self.attributes = {
             "uri": raw_data["uri"],
+            "url": raw_data['external_urls']['spotify'],
             "name": raw_data["name"],
+            # TODO: These can be in the album object
             "miniature": image_urls[0] if image_urls else None,
             "image": image_urls[-1] if image_urls else None,
             "artists_number": len(raw_data["artists"]),
-            # TODO: perhaps parse artists can be elsewhere?
+            # TODO: replace with actual artist object creation
             "artists": parse_artists(raw_data["artists"]),
             "popularity": raw_data["popularity"],
             "explicit": raw_data["explicit"],
             "duration": raw_data["duration_ms"],
             "number": raw_data["track_number"],
+            # TODO: This can be in the album object
             "release": raw_data["album"]["release_date"],
             "release_precision": raw_data["album"]["release_date_precision"],
             "release_year": int(raw_data["album"]["release_date"][:4]),

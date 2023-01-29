@@ -1,3 +1,4 @@
+import helpers
 import typing
 from typing import Any
 import webbrowser
@@ -11,8 +12,8 @@ import classes.spotify as spotify
 from classes.spotify_session import SpotifySession
 from classes.genius_session import GeniusSession
 
-import helper
-
+import parser
+import time
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
 
@@ -26,11 +27,11 @@ navigation_stack = []
 command_queue = []
 collections = []
 silent = False
-
 # TODO: Best way to avoid passing the session to every constructor
 # TODO: Argument chaining to avoid unnecessary menus
 # TODO: Navigate lists by name
 
+TEMP_time_measure = None
 
 def update_navigation_stack(item):
     navigation_stack.append(item)
@@ -48,7 +49,7 @@ def update_navigation_stack(item):
             if isinstance(item, spotify.Object):
                 print(f"{item.name}", end="")
             if isinstance(item, spotify.Track):
-                print(f" ({item.artists})", end="")
+                print(f" ({[a.name for a in item.artists]})", end="")
         print()
 
 
@@ -65,6 +66,17 @@ def navigate_playback():
     navigate(currently_playing)
 
 
+def navigate_artist():
+    item: spotify.Track = navigation_stack[-1]
+    # TODO: Add support for navigating a list of artists with the first artist as default argument
+    artist = item.artists[0]
+    navigate(artist)
+
+def navigate_album():
+    item: spotify.Track = navigation_stack[-1]
+    # TODO: Add support for navigating a list of artists with the first artist as default argument
+    navigate(item.album)
+
 def navigate_home_menu():
     navigation_stack.clear()
     command_queue.clear()
@@ -73,9 +85,10 @@ def navigate_home_menu():
         user = sp.fetch_user()
         print(f"Logged in as {user.name}")
         currently_playing = sp.fetch_currently_playing()
-        print(
-            f"Currently playing: {currently_playing.name} by {currently_playing.artists}"
-        )
+        if currently_playing:
+            print(
+                f"Currently playing: {currently_playing.name} by {[a.name for a in currently_playing.artists]}"
+            )
         lists = {"collections": collections}
         take_input(loaded_lists=lists)
     else:
@@ -101,7 +114,7 @@ def navigate_spotify_object(spotify_object: spotify.Object):
         if spotify_object.children_loaded:
             loaded[child_type_name] = spotify_object.children
         else:
-            unloaded[child_type_name] = spotify_object.load_children
+            unloaded[child_type_name] = spotify_object.get_children
 
     take_input(loaded_lists=loaded, unloaded_lists=unloaded)
 
@@ -125,7 +138,12 @@ def navigate_list(items: List, start=0, number=None):
 
 # TODO: Separate presenting choices or taking input for a list and a menu
 def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
-    global command_queue, silent
+    global command_queue, silent, TEMP_time_measure
+
+
+    # Print time of execution for the last command
+    total_time = time.time() - TEMP_time_measure
+    print(f"Command executed in {round(total_time,2)} ms")
 
     # Update available actions with type-specific defaults
     actions = {}
@@ -154,6 +172,9 @@ def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
         full_input = input()
         commands = full_input.lower().split()
         command_queue = commands
+
+    # Start measuring time
+    TEMP_time_measure = time.time()
 
     # Execute the selected action
     command = command_queue.pop(0)
@@ -200,18 +221,19 @@ def print_current_user():
 def print_details():
     # TODO: Add nicer formatting for some track details
     item = navigation_stack[-1]
-    confidence_scores = item.get_confidence_scores()
-    details = {**item.attributes, **item.get_features(), 'lyrics': bool(item.lyrics), 'language': item.language}
+    details = {**item.attributes, **item.get_features()}
 
     if isinstance(item, spotify.Track):
-        for i in details:
-            value = details[i]
-            if isinstance(value, float):
+        confidence_scores = item.get_confidence_scores()
+        details.update({'lyrics': bool(item.lyrics), 'language': item.language})
+    for i in details:
+        value = details[i]
+        if isinstance(value, float):
                 value = round(value, 2)
-            print(f"{i} {'.' * (25 - len(i))} {value}", end='')
-            if i in confidence_scores:
-                print(f" ({round(confidence_scores[i],2)}) ", end='')
-            print()
+        print(f"{i} {'.' * (25 - len(i))} {value}", end='')
+        if isinstance(item, spotify.Track) and i in confidence_scores:
+            print(f" ({round(confidence_scores[i],2)}) ", end='')
+        print()
 
     input()
     navigate(navigation_stack.pop())
@@ -327,11 +349,11 @@ def load_object():
 TYPE_ACTIONS = {
     object: {"help": print_help},
     type(None): {"new": new_collection, "search": search, "browse": None},
-    List: {"back": navigate_back, "filter": None, "add": None},
+    List: {"back": navigate_back, "filter": None},
     spotify.Object: {
         "back": navigate_back,
         "load": load_object,
-        "add": None,
+
     },
     spotify.Resource: {
         "details": print_details,
@@ -339,7 +361,7 @@ TYPE_ACTIONS = {
     spotify.Collection: {"filter": None, "save": None},
     spotify.User: {},
     spotify.Playlist: {},
-    spotify.Track: {"image": open_image},#, "lyrics": show_lyrics },
+    spotify.Track: {"artist": navigate_artist, "xalbum": navigate_album, "image": open_image, "zlyrics": show_lyrics },
     # TODO: Add Artist and Album
 }
 
@@ -347,7 +369,7 @@ TYPE_ACTIONS = {
 AUTHORIZED_ACTIONS = {
     type(None): {"user": print_current_user, "playback": navigate_playback},
     List: {},
-    spotify.Object: {"back": navigate_back, "load": load_object, "add": None},
+    spotify.Object: {"back": navigate_back, "load": load_object},
     spotify.Resource: {},
     spotify.Collection: {"filter": None, "save": None},
     spotify.User: {"follow": None},
@@ -527,6 +549,44 @@ HELP_TEXT = {
         "Display the final list of all tracks within a collection after gathering them from collection resources and "
     ],
 }
+
+cp_uri = sp.fetch_currently_playing().uri
+
+print('\nTRACK')
+track = sp.fetch_raw_item(cp_uri)
+helpers.show_dict(track)
+print('\nALBUM')
+helpers.show_dict(track['album'])
+print('\nFULL ALBUM')
+album = sp.fetch_raw_item(track['album']['uri'])
+helpers.show_dict(album)
+for i in album:
+    if i not in track['album']:
+        print(i)
+
+print('\nTRACK FROM ALBUM RESPONSE')
+helpers.show_dict(album['tracks']['items'][0])
+for i in track:
+    if i not in album['tracks']['items'][0]:
+        print(i)
+
+print('\nARTIST')
+helpers.show_dict(track['artists'][0])
+print('\nFULL ARTIST')
+artist = sp.fetch_raw_item(track['artists'][0]['uri'])
+helpers.show_dict(artist)
+for i in artist:
+    if i not in track['artists'][0]:
+        print(i)
+
+artist = sp.fetch_item(track['artists'][0]['uri'])
+
+albums = sp.fetch_artist_albums(artist.uri)
+helpers.show_dict(albums[0])
+
+
+
+TEMP_time_measure = time.time()
 
 if __name__ == "__main__":
     navigate_home_menu()

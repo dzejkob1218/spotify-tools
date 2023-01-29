@@ -16,7 +16,7 @@ class User(spotify.Resource, spotify.Collection):
         # TODO: The old function for loading attributes assumes 'tracks' are always there, is this true?
         spotify.Collection.__init__(self, sp, name=None, children=children)
 
-    def load_children(self):
+    def get_children(self):
         self.children = self.sp.fetch_user_playlists(self)
         self.children_loaded = True
         return self.children

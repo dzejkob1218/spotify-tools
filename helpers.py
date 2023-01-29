@@ -1,4 +1,15 @@
 import re
+import langdetect
+
+
+def detect_language(text):
+    return langdetect.detect_langs(text)
+
+
+def show_dict(d):
+    for i in d:
+        print(f"{i} {'.' * (25 - len(i))} {d[i]}")
+
 
 # generates a url to get a resource with a specified uri
 def uri_to_url(uri):
