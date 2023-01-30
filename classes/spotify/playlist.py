@@ -3,48 +3,28 @@ from classes.spotify.track import Track
 from helpers import sort_image_urls
 
 
-
 # TODO: Data about when a track was added to a playlist is being lost right now
 class Playlist(spotify.Resource, spotify.Collection):
     child_type = Track
+    detail_names = ['uri', 'name', 'public', 'description', 'followers', 'total_tracks', 'images']
+    detail_procedures = {
+        'followers': ("followers", lambda data: data["total"]),
+        'total_tracks': ("tracks", lambda data: data["total"]),
+        'images': ('images', lambda data: sort_image_urls(data)),
+    }
 
-    # Viable children types: Track
     def __init__(self, sp, raw_data, children=None):
-        # Resource init
         spotify.Resource.__init__(self, sp, raw_data)
-        # Collection init
         spotify.Collection.__init__(self, sp, children)
         # TODO: Does storing the initial 100 children (which increases code complexity), ever come in handy?
         self.children_loaded = len(self.children) == self.total  # Are all tracks loaded, not only the initial 100
         self.user_is_owner = self.owner == sp.fetch_user().uri
 
-    def parse_details(self, raw_data):
-        # Get a list of image urls sorted by size
-        image_urls = (
-            sort_image_urls(raw_data["images"]) if "images" in raw_data else None
-        )
-
-        # Write object attributes
-        self.attributes = {
-            "uri": raw_data["uri"],
-            "name": raw_data["name"],
-            "miniature": image_urls[0] if image_urls else None,
-            "image": image_urls[-1] if image_urls else None,
-            "followers": raw_data["followers"]["total"]
-            if "followers" in raw_data
-            else 0,
-            "owner": raw_data["owner"]["uri"],
-            "owner_name": raw_data["owner"]["display_name"],
-            "public": raw_data["public"],
-            "total": raw_data["tracks"]["total"],
-            "description": raw_data["description"],
-        }
+        # TODO: Introduce an attribute for the owner user object
 
     def load(self, recursive=False):
-        # TODO: Research if something like 'playlist features' exists
-        """
-        Loads all tracks and their details.
-        """
+        # TODO: This should be pushed up
+        """Loads all tracks and their details."""
         if not self.children_loaded:
             self.get_children()
         if recursive:
@@ -69,16 +49,9 @@ class Playlist(spotify.Resource, spotify.Collection):
         self.children_loaded = True
         return self.children
 
-
-
-    def get_averages(self):
-        # Count up attributes of included songs which can be nicely averaged out and presented
-        # TODO : Add a functionality for presenting attributes which can't be just averaged (date, key, signature, most popular artist etc.)
-        pass
-
-
+    # Legacy function
     def get_track_features(self):
-        " Returns a list of track attributes that successfully loaded their features and can be filtered and sorted "
+        """ Returns a list of track attributes that successfully loaded their features and can be filtered and sorted """
         loaded, unloaded = [], []
         for track in self.children:
             loaded.append(track.attributes) if track.features else unloaded.append(track.attributes)

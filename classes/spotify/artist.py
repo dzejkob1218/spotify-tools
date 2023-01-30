@@ -5,11 +5,6 @@ Additional methods:
 - Related
 
 """
-
-SUMMABLE_FEATURES = {'signature', 'release_year', 'tempo', 'popularity', 'duration', 'valence', 'dance',
-                     'speech', 'acoustic', 'instrumental', 'live', 'number', 'energy', 'explicit',
-                     'mode', 'artists_number'}
-
 import classes.spotify as spotify
 from classes.spotify.album import Album
 from helpers import sort_image_urls
@@ -17,40 +12,33 @@ from helpers import sort_image_urls
 
 class Artist(spotify.Resource, spotify.Collection):
     child_type = Album
+    detail_names = ['uri', 'url', 'name', 'popularity', 'genres', 'followers', 'images']
+    detail_procedures = {
+        'url': ('external_urls', lambda data: data['spotify']),
+        'images': ('images', lambda data: sort_image_urls(data)),
+        'followers': ("followers", lambda data: data["total"]),
+    }
 
     # Viable children types: Track
     def __init__(self, sp, raw_data, children=None):
-        # Resource init
         spotify.Resource.__init__(self, sp, raw_data)
-        # Collection init
         spotify.Collection.__init__(self, sp, children)
 
-        self.details_complete = False
+    def gather_tracks(self, keep_duplicates=False):
+        """
+        Extends Collection's function to exclude songs by other artists.
 
-        print(f"CREATING ARTIST {self.name}")
-
-    def parse_details(self, raw_data):
-        # Write object attributes
-        self.attributes = {
-            "uri": raw_data["uri"],
-            "name": raw_data["name"],
-            "url": raw_data['external_urls']['spotify'],
-        }
-
-        if len(raw_data) > 6:
-            self.details_complete = True
-            image_urls = (sort_image_urls(raw_data["images"]))  # Get a list of image urls sorted by size
-            self.attributes.update({
-                    "miniature": image_urls[0] if image_urls else None,
-                    "image": image_urls[-1] if image_urls else None,
-                    "followers": raw_data["followers"]["total"],
-                    "popularity": raw_data["popularity"],
-                    "genres": raw_data["genres"],
-                })
+        Not all tracks on an artist's child albums feature the artist, for example if it's a compilation album.
+        """
+        # TODO: Use a set to remove duplicates
+        # TODO: Add options for what's considered a duplicate e.g. live versions, remixes
+        tracks = super().gather_tracks()
+        return [track for track in tracks if self in track.artists]
 
     def get_children(self):
+        # TODO: album_group (appears on, single, album) is specific to the artist and is currently being missed
         if not self.children:
-            print(f"ARTIST {self.name} LOADING CHILDREN")
+            #(f"ARTIST {self.name} LOADING CHILDREN")
             # Request all remaining tracks
-            self.children = self.sp.fetch_artist_albums(self.uri)
+            self.sp.fetch_artist_albums(self)
         return self.children

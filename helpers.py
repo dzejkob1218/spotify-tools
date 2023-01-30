@@ -1,3 +1,4 @@
+
 import re
 import langdetect
 
@@ -56,13 +57,31 @@ def track_key(key, mode):
 
 # Removes podcast episodes and local tracks
 def filter_false_tracks(items):
+    """Filter out local tracks and items with no 'track' (they're usually podcast episodes)"""
     result = []
     for item in items:
-        # Filter out local tracks and items with no 'track' (they're usually podcast episodes)
         if not item['is_local'] and 'track' in item:
             result.append(item['track'])
     return result
 
+def remove_duplicates(tracks, sanitize_names=True):
+    unique_tracks = []
+    unique_names = {}
+    for track in tracks:
+        name = uniform_title(track.name).lower() if sanitize_names else track.name.lower()
+        unique = True
+        # Reject the track if any of the featuring artists already has a song of that title
+        for artist in track.artists:
+            if artist.name not in unique_names:
+                unique_names[artist.name] = set()
+            elif name in unique_names[artist.name]:
+                print(f"Discarding {name}")
+                unique = False
+                break
+            unique_names[artist.name].add(name)
+        if unique:
+            unique_tracks.append(track)
+    return unique_tracks
 
 def uniform_title(title):
     """Does the best it can to get the actual song title from whatever the name of the track is
@@ -83,14 +102,15 @@ def uniform_title(title):
         if any(keyword in newtitle[1].lower() for keyword in keywords):
             newtitle = newtitle[0]
 
-    # removes everything in parentheses if there's a keyword inside
+    # Removes everything in parentheses if there's a keyword inside.
     if '(' in newtitle:
         regex = re.compile(".*?\((.*?)\)")
-        result = re.findall(regex, title)
-        if len(result) > 0:
-            if any(keyword in result[0].lower() for keyword in keywords):
-                tag = '(' + result[0] + ')'
-                newtitle = newtitle.replace(tag, '')
+        results = re.findall(regex, title)
+        if len(results) > 0:
+            for result in results:
+                if any(keyword in result.lower() for keyword in keywords):
+                    tag = '(' + result + ')'
+                    newtitle = newtitle.replace(tag, '')
 
     newtitle = newtitle.strip()
     return newtitle

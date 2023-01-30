@@ -21,7 +21,11 @@ class Parser:
         # TODO: In some cases the incoming raw_data can contain new information which currently would be ignored
 
         if uri in self.resources:
-            return self.resources[uri]
+            resource = self.resources[uri]
+            # Parse the new data if it contains some missing information. # TODO: test this
+            if any(missing in raw_data for missing in resource.missing_detail_keys()):
+                resource.parse_details(raw_data)
+            return resource
 
         resource = self.parse_resource(raw_data)
         self.resources[uri] = resource

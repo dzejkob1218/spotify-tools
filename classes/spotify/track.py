@@ -3,24 +3,36 @@ import helpers
 from helpers import parse_artists, sort_image_urls
 from classes.genius_session import GeniusSession
 
+
 class Track(spotify.Resource):
     """
     Additional methods:
     - Recommended (track)
     """
+    # Parent features that should be considered when averaging lists:
+    # Album - album, album_type, release_date, release_date_precision, genres (?), copyrights
+    # Artist - artist, genres,
+
+    # TODO: This could later be merged into details
+    feature_names = ['valence', 'energy', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'tempo', 'key', 'mode',
+                'signature']
+    detail_names = ['uri', 'url', 'name', 'popularity', 'explicit', 'duration', 'track_number']
+    detail_procedures = {
+        'url': ('external_urls', lambda data: data['spotify']),
+        'duration': ('duration_ms', None),
+    }
 
     def __init__(self, sp, raw_data, artists, album):
+
+        self.artists = artists
+        self.album = album
+
         super().__init__(sp, raw_data)
         self.lyrics = None
         self.language = None
         self.confidence_scores = None
         self.sp = sp
-        self.artists = artists
-        self.album = album
         self.features = {}
-
-        print(f"CREATING TRACK {self.name}")
-
 
     def load(self, recursive=False):
         """
@@ -33,12 +45,13 @@ class Track(spotify.Resource):
         self.get_lyrics()
         self.get_language()
 
+    # TODO: Add method for completing own details
+
     def get_features(self):
         # TODO: Measure performance cost of loading features with track by default
         """Add audio features to track attributes."""
         if not self.features:
-            print(f"TRACK {self.name} LOADING FEATURES")
-            self.parse_features(self.sp.fetch_track_features([self.uri])[0])
+            self.sp.fetch_track_features([self])
         return self.features
 
     def get_lyrics(self):
@@ -72,52 +85,22 @@ class Track(spotify.Resource):
             }
         return self.confidence_scores
 
-    def parse_details(self, raw_data):
-        # Load attributes from Spotify.track
-        # TODO: Are the images ever missing?
-        # TODO: Wouldn't it be better to just create the parent object?
-        image_urls = (
-            sort_image_urls(raw_data["album"]["images"])
-            if "images" in raw_data["album"]
-            else None
-        )
-
-        self.attributes = {
-            "uri": raw_data["uri"],
-            "url": raw_data['external_urls']['spotify'],
-            "name": raw_data["name"],
-            # TODO: These can be in the album object
-            "miniature": image_urls[0] if image_urls else None,
-            "image": image_urls[-1] if image_urls else None,
-            "artists_number": len(raw_data["artists"]),
-            # TODO: replace with actual artist object creation
-            "artists": parse_artists(raw_data["artists"]),
-            "popularity": raw_data["popularity"],
-            "explicit": raw_data["explicit"],
-            "duration": raw_data["duration_ms"],
-            "number": raw_data["track_number"],
-            # TODO: This can be in the album object
-            "release": raw_data["album"]["release_date"],
-            "release_precision": raw_data["album"]["release_date_precision"],
-            "release_year": int(raw_data["album"]["release_date"][:4]),
-        }
-
     def parse_features(self, raw_data):
-        self.features = {
-            'valence': raw_data['valence'],
-            'energy': raw_data['energy'],
-            'dance': raw_data['danceability'],
-            'speech': raw_data['speechiness'],
-            'acoustic': raw_data['acousticness'],
-            'instrumental': raw_data['instrumentalness'],
-            'live': raw_data['liveness'],
-            'tempo': raw_data['tempo'],
-            'key': raw_data['key'],  # this is the root note of the song's key (used for filtering)
-            'mode': raw_data['mode'],
-            # this is the mode itself for sorting songs into major and minor keys (used for filtering)
-            # TODO: key_name probably doesn't need to be here
-            # 'key_name': track_key(self.raw_data['key'], self.raw_data['mode']),
-            # this is a string representation of the song's key including it's mode (used for display)
-            'signature': raw_data['time_signature'],
+        """
+        Updates features from a Spotify API response.
+
+        It is assumed the features response is always complete.
+        The default Spotify names for the features are unnecessarily long, so this function aliases them before copying.
+        """
+        aliases = {
+            'dance': 'danceability',
+            'speech': 'speechiness',
+            'acoustic': 'acousticness',
+            'instrumental': 'instrumentalness',
+            'live': 'liveness',
+            'signature': 'time_signature',
         }
 
+        for feature in self.feature_names:
+            key = aliases[feature] if feature in aliases else feature
+            self.features[feature] = raw_data[key]

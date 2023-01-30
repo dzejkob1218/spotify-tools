@@ -2,10 +2,15 @@ import classes.spotify as spotify
 
 
 class User(spotify.Resource, spotify.Collection):
+    # TODO: Images?
     child_type = spotify.Playlist
-
+    detail_names = ['uri', 'id', 'followers', 'name']
+    detail_procedures = {
+        'followers': ("followers", lambda data: data["total"]),
+        'name': ("display_name", None),
+    }
     """
-    Note: Saved tracks, albums and artists are only available for an authorized user, so they are a part of the session rather than of the user object.
+    Note: Saved tracks, albums and artists are only available for an authorized user, so they belong to the session rather than to the user object.
     """
 
     def __init__(self, sp, raw_data, children=None):
@@ -20,13 +25,3 @@ class User(spotify.Resource, spotify.Collection):
         self.children = self.sp.fetch_user_playlists(self)
         self.children_loaded = True
         return self.children
-
-    # Details
-    def parse_details(self, raw_data):
-        self.attributes = {
-            # TODO: Images?
-            "uri": raw_data["uri"],
-            "id": raw_data["id"],
-            "name": raw_data["display_name"],
-            "followers": raw_data["followers"]["total"],
-        }

@@ -1,7 +1,9 @@
+from typing import List
 from spotipy import Spotify
 import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
+import classes.spotify as spotify
 
 import parser
 
@@ -110,24 +112,48 @@ class SpotifySession:
                 self.connection.start_playback(uris=uris)
 
     # GENERAL SCOPE
-    # TODO: Test that this works on a static playlist
-    def fetch_track_features(self, uris):
+    def fetch_track_details(self, tracks: List[spotify.Track]):
         """
-        Returns a list of audio features for a list of track uris.
+        Downloads and updates details for a list of tracks.
 
         Each request can fetch up to 100 tracks, so this is more efficient to do in bulk.
         """
         result = []
-        total_tracks = len(uris)
+        total_tracks = len(tracks)
+        # Run a loop requesting a 100 tracks at a time
+        for i in range(-(-total_tracks // 50)):
+            chunk = tracks[(i * 50) : (i * 50) + 50]
+            chunk_size = len(chunk)
+            details = self.connection.tracks([track.uri for track in chunk])['tracks']
+            # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
+            if not len(details) == chunk_size:
+                raise Exception("Failed to fetch track details for all tracks")
+            # Pass details to each track to be parsed
+            for i in range(chunk_size):
+                chunk[i].parse_details(details[i])
+        return tracks
+
+    # TODO: Test that this works on a static playlist
+    def fetch_track_features(self, tracks: List[spotify.Track]):
+        """
+        Downloads and updates audio features for a list of tracks.
+
+        Each request can fetch up to 100 tracks, so this is more efficient to do in bulk.
+        """
+        result = []
+        total_tracks = len(tracks)
         # Run a loop requesting a 100 tracks at a time
         for i in range(-(-total_tracks // 100)):
-            chunk = uris[(i * 100) : (i * 100) + 100]
-            features = self.connection.audio_features(chunk)
-            result += features
-        # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
-        if not len(result) == total_tracks:
-            raise Exception("Failed to fetch track features for all tracks")
-        return result
+            chunk = tracks[(i * 100) : (i * 100) + 100]
+            chunk_size = len(chunk)
+            features = self.connection.audio_features([track.uri for track in chunk])
+            # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
+            if not len(features) == chunk_size:
+                raise Exception("Failed to fetch track features for all tracks")
+            # Pass features to each track to be parsed
+            for i in range(chunk_size):
+                chunk[i].parse_features(features[i])
+        return tracks
 
     # TODO: Test that this works on a static playlist
     def fetch_playlist_tracks(self, playlist_uri, total_tracks, start=0):
@@ -145,31 +171,27 @@ class SpotifySession:
         return [self.parser.get_resource(track) for track in playlist_tracks]
 
     # TODO: Fetch functions for different types are extremely similar
-    def fetch_artist_albums(self, artist_uri):
+    def fetch_artist_albums(self, artist):
         artist_albums = []
-        # Maximum albums for one request is 50
-        response = self.connection.artist_albums(artist_uri, limit=50)
+        # Maximum albums for one request is 50 # TODO: There's a lot of artists with more than 50
+        response = self.connection.artist_albums(artist.uri, limit=50)
         # TODO: Temporary screening
-        if response['total'] >= 50:
-            raise Exception(f"Found artist with more than 50 albums: {artist_uri}")
         for item in response['items']:
-            if item['album_group'] != 'album' or item['album_type'] != 'album':
-                helpers.show_dict(item)
             artist_albums.append(self.parser.get_resource(item))
-        return artist_albums
+        artist.children = artist_albums
 
-    def fetch_album_tracks(self, album_uri):
+    # TODO: This function proves it's better to use whole objects as arguments instead of just URIs
+    def fetch_album_tracks(self, album):
         album_tracks = []
         # Maximum tracks for one request is 50
-        response = self.connection.album_tracks(album_uri, limit=50)
-        # TODO: Temporary screening
-        if response['total'] >= 50:
-            raise Exception(f"Found album with more than 50 tracks: {album_uri}")
-        for item in response['items']:
-            if item['track_group'] != 'track' or item['track_type'] != 'track':
-                helpers.show_dict(item)
-            album_tracks.append(self.parser.get_resource(item))
-        return album_tracks
+        for i in range(0, -(-album.total_tracks // 50)):
+            response = self.connection.album_tracks(album.uri, offset=(i*50), limit=50)
+            for item in response['items']:
+                item['album'] = {'uri': album.uri}  # Album URI is appended to link the track back to the album.
+                album_tracks.append(self.parser.get_resource(item))
+        if len(album_tracks) != album.total_tracks:
+            exit(f"ALBUM TRACKS: {len(album_tracks)}, ALBUM TOTAL: {album.total_tracks}")
+        album.children = album_tracks
 
     def search(self, query, search_type):
         results = self.connection.search(q=query, type=search_type, limit=50)

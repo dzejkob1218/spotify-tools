@@ -18,5 +18,5 @@ Filters have:
 
 
 class Filter:
-    def filter(self, items: List[spotify.Object]):
+    def filter_collection(self, items: List[spotify.Object]):
         pass

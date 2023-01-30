@@ -85,6 +85,11 @@ def navigate_home_menu():
         user = sp.fetch_user()
         print(f"Logged in as {user.name}")
         currently_playing = sp.fetch_currently_playing()
+
+        print("Missing details")
+        print(currently_playing.album.missing_detail_keys())
+        print(currently_playing.artists[0].missing_detail_keys())
+
         if currently_playing:
             print(
                 f"Currently playing: {currently_playing.name} by {[a.name for a in currently_playing.artists]}"
@@ -551,9 +556,11 @@ HELP_TEXT = {
 }
 
 cp_uri = sp.fetch_currently_playing().uri
+track = sp.fetch_item('spotify:track:0kquzTsZG4m9qmLJaPSY9U')
 
+"""
 print('\nTRACK')
-track = sp.fetch_raw_item(cp_uri)
+track = sp.fetch_raw_item('spotify:track:5lVpv4Fm2hKaofsTmFC0tQ')
 helpers.show_dict(track)
 print('\nALBUM')
 helpers.show_dict(track['album'])
@@ -563,30 +570,20 @@ helpers.show_dict(album)
 for i in album:
     if i not in track['album']:
         print(i)
-
-print('\nTRACK FROM ALBUM RESPONSE')
-helpers.show_dict(album['tracks']['items'][0])
-for i in track:
-    if i not in album['tracks']['items'][0]:
-        print(i)
-
 print('\nARTIST')
 helpers.show_dict(track['artists'][0])
 print('\nFULL ARTIST')
 artist = sp.fetch_raw_item(track['artists'][0]['uri'])
 helpers.show_dict(artist)
-for i in artist:
-    if i not in track['artists'][0]:
-        print(i)
+"""
 
-artist = sp.fetch_item(track['artists'][0]['uri'])
-
-albums = sp.fetch_artist_albums(artist.uri)
-helpers.show_dict(albums[0])
-
-
+artist = track.artists[0]
+artist.get_features()
+all_tracks = sorted(artist.gather_tracks(), key=lambda track: track.popularity, reverse=True)
+all_tracks = helpers.remove_duplicates(all_tracks)
+for track in all_tracks:
+    print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
 
 TEMP_time_measure = time.time()
-
 if __name__ == "__main__":
     navigate_home_menu()
