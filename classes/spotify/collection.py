@@ -8,9 +8,8 @@ from classes.spotify.resource import Resource
 Any collection of Spotify resources
 """
 # TODO: Reimplement following: 'release_year', 'artists_number'
-SUMMABLE_FEATURES = {'signature', 'tempo', 'popularity', 'duration', 'valence', 'dance',
-                             'speech', 'acoustic', 'instrumental', 'live', 'track_number', 'energy', 'explicit',
-                             'mode'}
+SUMMABLE_DETAILS = {'popularity', 'duration', 'track_number',  'explicit', 'mode'}
+SUMMABLE_FEATURES = {'signature', 'tempo', 'valence', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'energy', 'mode'}
 
 class Collection(spotify.Object):
     # Viable children types: All
@@ -37,16 +36,16 @@ class Collection(spotify.Object):
 
     # TODO: Consider splitting into get and load functions
     def get_children(self):
-        """Loads all available children by sending requests to Spotify."""
+        """Loads, caches and returns all available children."""
         pass
 
-    def gather_tracks(self, keep_duplicates=False):
+    def gather_tracks(self):
         """Recursively return all tracks in this collection and all subcollections."""
         # TODO: Use a set to remove duplicates
+        # TODO: Different people may have different preferences on which version to keep (f.e. older vs newer release).
         # TODO: Add options for what's considered a duplicate e.g. live versions, remixes
         tracks = set()
-        self.get_children()
-        for sub in self.children:
+        for sub in self.get_children():
             if isinstance(sub, Collection):
                 sub.get_children()
                 tracks.update(sub.gather_tracks())
@@ -54,6 +53,38 @@ class Collection(spotify.Object):
                 tracks.add(sub)
         return list(tracks)
 
+    def get_complete_children(self):
+        # TODO: Make the session class recognise the correct type
+        pass
+
+    def get_complete_tracks(self, features=False, remove_duplicates=False):
+        """Makes sure all tracks under this collection are fully loaded and returns them."""
+        all_tracks = self.gather_tracks()
+        # Getting track features and details is much faster in bulk, it has to be done by the parent
+        incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
+        # TODO: Does it makes sense to merge features and details fetch methods? (one has a limit of 50, the other 100)
+        if incomplete_tracks:
+            self.sp.fetch_track_details(incomplete_tracks)
+
+        if features:
+            tracks_without_features = list(filter(lambda track: track.features is None, all_tracks))
+            if tracks_without_features:
+                self.sp.fetch_track_features(tracks_without_features)
+
+        # TODO: Temporary check, test if there's any way to break this
+        all_tracks = self.gather_tracks()
+        incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
+        if features:
+            tracks_without_features = list(filter(lambda track: track.features is None, all_tracks))
+        if incomplete_tracks or (features and tracks_without_features):
+            raise Exception("Tracks without features or attributes")
+
+        # TODO: Temporary simplified code for removing duplicates, later add more options
+        if remove_duplicates:
+            all_tracks = sorted(all_tracks, key=lambda track: track.popularity, reverse=True)
+            all_tracks = helpers.remove_duplicates(all_tracks)
+
+        return all_tracks
 
     def get_features(self):
         # TODO: Add quantitive features; most popular artists, languages
@@ -65,33 +96,23 @@ class Collection(spotify.Object):
         if not self.features:
             # TODO: Add options for loading new tracks and forcing a refresh on all tracks
             # TODO: There is a difference between artist's tracks' average features and albums' average features
-            all_tracks = self.gather_tracks()
-            # Getting track features and details is much faster in bulk, it has to be done by the parent
-            incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
-            self.sp.fetch_track_details(incomplete_tracks)
-            tracks_without_features = list(filter(lambda track: not track.features, all_tracks))
-            self.sp.fetch_track_features(tracks_without_features)
-
-            # TODO: Temporary check, test if there's any way to break this
-
-            all_tracks = self.gather_tracks()
-            incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
-            tracks_without_features = list(filter(lambda track: not track.features, all_tracks))
-            if incomplete_tracks or tracks_without_features:
-                raise Exception("Tracks without features or attributes")
-
-            artists = {}
-            languages = {}
-
-            # Calculate averages
+            all_tracks = self.get_complete_tracks()
+            detail_sums = dict().fromkeys(SUMMABLE_DETAILS, 0)
             feature_sums = dict().fromkeys(SUMMABLE_FEATURES, 0)
+            tracks_with_features = 0
             for child in all_tracks:
-                child_details = {**child.features, **child.attributes}
-                for feature in feature_sums:
-                    feature_sums[feature] += child_details[feature]
+                # Every complete track has details.
+                for detail in detail_sums:
+                    detail_sums[detail] += child.attributes[detail]
+                # Not every track has features, but if it does they're always complete.
+                if child.features:
+                    tracks_with_features += 1
+                    for feature in feature_sums:
+                        feature_sums[feature] += child.features[feature]
+            for detail_sum in detail_sums:
+                self.features[detail_sum] = detail_sums[detail_sum]/len(all_tracks)
             for feature_sum in feature_sums:
-                self.features[feature_sum] = feature_sums[feature_sum]/len(all_tracks)
-
+                self.features[feature_sum] = feature_sums[feature_sum]/tracks_with_features
         return self.features
 
 

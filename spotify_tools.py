@@ -9,10 +9,10 @@ from langcodes import Language
 
 # Test main file that will not be present in the library
 import classes.spotify as spotify
+from classes.discovery.discover import Discover
 from classes.spotify_session import SpotifySession
 from classes.genius_session import GeniusSession
 
-import parser
 import time
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
@@ -259,7 +259,7 @@ def show_lyrics():
 
 def open_image():
     item = navigation_stack[-1]
-    webbrowser.open(item.image, new=2)
+    webbrowser.open(item.album.images[-1], new=2)
     print("Opening cover image in browser...")
     navigate(navigation_stack.pop(), silent=True)
 
@@ -555,8 +555,8 @@ HELP_TEXT = {
     ],
 }
 
-cp_uri = sp.fetch_currently_playing().uri
-track = sp.fetch_item('spotify:track:0kquzTsZG4m9qmLJaPSY9U')
+#cp_uri = sp.fetch_currently_playing().uri
+#track = sp.fetch_item('spotify:track:0kquzTsZG4m9qmLJaPSY9U')
 
 """
 print('\nTRACK')
@@ -575,7 +575,6 @@ helpers.show_dict(track['artists'][0])
 print('\nFULL ARTIST')
 artist = sp.fetch_raw_item(track['artists'][0]['uri'])
 helpers.show_dict(artist)
-"""
 
 artist = track.artists[0]
 artist.get_features()
@@ -583,7 +582,67 @@ all_tracks = sorted(artist.gather_tracks(), key=lambda track: track.popularity, 
 all_tracks = helpers.remove_duplicates(all_tracks)
 for track in all_tracks:
     print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
-
 TEMP_time_measure = time.time()
 if __name__ == "__main__":
     navigate_home_menu()
+"""
+
+
+
+tcv = 'spotify:artist:4zYQWYmtimAEmI6WWEzGfO'
+dp = 'spotify:artist:568ZhdwyaiCyOGJRtNYhWf'
+doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
+doors = sp.fetch_item(doors)
+doors.gather_tracks()
+
+disc = Discover(sp)
+star = '0idBt8K93C3UMOwgNLpdHB'
+test = '0hIYWWqNo6B7zHa0PhTTr6'
+test2 = '7yhjfMkKsoVnJZVPd6VJF1'
+
+
+
+times = time.time()
+id = test2
+playlist = sp.fetch_item(f'spotify:playlist:{id}')
+disc.extend(playlist)
+print(f"Loaded in {round(time.time() - times, 2)} seconds")
+exit()
+
+exit()
+print(f"Albums: {len(doors.children)}")
+print(f"Tracks: {len(tracks)}")
+tracks = sorted(tracks, key=lambda track: track.popularity, reverse=True)
+tracks = helpers.remove_duplicates(tracks)
+print(f"Unique tracks: {len(tracks)}")
+for track in tracks:
+    print(f"{track.popularity:3} - {helpers.uniform_title(track.name)} - {track.album.name}")
+exit()
+
+
+"""
+REMOVE DUPLICATES:
+There are 7 artists and 7 albums in My Playlist #34
+El Guincho: 1 / 54 - 5
+Erick Cosaque: 1 / 19 - 2
+Mexican Institute Of Sound: 1 / 88 - 8
+The Doors: 1 / 141 - 15
+Alogte Oho & His Sounds of Joy: 1 / 9 - 1       
+Hallelujah Chicken Run Band: 1 / 14 - 1
+Deep Purple: 1 / 283 - 55
+Loaded in 15.77 seconds, Loaded in 18.55 seconds, Loaded in 17.61 seconds, Loaded in 16.28 seconds
+
+
+WITH DUPLICATES:
+There are 7 artists and 7 albums in My Playlist #34
+
+Mexican Institute Of Sound: 1 / 97 - 12
+The Doors: 1 / 165 - 22
+Erick Cosaque: 1 / 21 - 3
+Alogte Oho & His Sounds of Joy: 1 / 9 - 1
+El Guincho: 1 / 54 - 5
+Hallelujah Chicken Run Band: 1 / 14 - 1
+Deep Purple: 1 / 283 - 58
+Loaded in 16.34 seconds, Loaded in 16.71 seconds
+
+"""

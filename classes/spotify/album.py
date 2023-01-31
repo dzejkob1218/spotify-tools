@@ -21,6 +21,7 @@ class Album(spotify.Resource, spotify.Collection):
         # self.children_loaded = len(self.children) == self.total
 
     def get_children(self):
-        if not self.children:
+        if not self.children_loaded:
             self.sp.fetch_album_tracks(self)
+            self.children_loaded = True
         return self.children

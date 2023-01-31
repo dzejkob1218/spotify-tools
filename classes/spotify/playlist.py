@@ -17,8 +17,8 @@ class Playlist(spotify.Resource, spotify.Collection):
         spotify.Resource.__init__(self, sp, raw_data)
         spotify.Collection.__init__(self, sp, children)
         # TODO: Does storing the initial 100 children (which increases code complexity), ever come in handy?
-        self.children_loaded = len(self.children) == self.total  # Are all tracks loaded, not only the initial 100
-        self.user_is_owner = self.owner == sp.fetch_user().uri
+        self.children_loaded = len(self.children) == self.total_tracks  # Are all tracks loaded, not only the initial 100
+        #self.user_is_owner = self.owner == sp.fetch_user().uri
 
         # TODO: Introduce an attribute for the owner user object
 
@@ -33,19 +33,20 @@ class Playlist(spotify.Resource, spotify.Collection):
         self.get_features()
 
     def get_children(self):
-        print(f"PLAYLIST {self.name} LOADING CHILDREN")
-        total_tracks = self.attributes["total"]
-        total_tracks_downloaded = len(self.children)
-        # TODO: Generalize this check and move up to Collection class
-        if total_tracks_downloaded >= total_tracks:
-            raise Exception("Load children called on loaded collection")
-        # TODO: Test this
-        # Request all remaining tracks
-        self.children.extend(
-            self.sp.fetch_playlist_tracks(
-                self.uri, total_tracks, start=total_tracks_downloaded
+        if not self.children_loaded:
+            print(f"PLAYLIST {self.name} LOADING CHILDREN")
+            total_tracks = self.attributes["total_tracks"]
+            total_tracks_downloaded = len(self.children)
+            # TODO: Generalize this check and move up to Collection class
+            if total_tracks_downloaded >= total_tracks:
+                raise Exception("Load children called on loaded collection")
+            # TODO: Test this
+            # Request all remaining tracks
+            self.children.extend(
+                self.sp.fetch_playlist_tracks(
+                    self.uri, total_tracks, start=total_tracks_downloaded
+                )
             )
-        )
         self.children_loaded = True
         return self.children
 

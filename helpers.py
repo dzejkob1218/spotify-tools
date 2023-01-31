@@ -1,4 +1,4 @@
-
+from typing import List
 import re
 import langdetect
 
@@ -60,28 +60,48 @@ def filter_false_tracks(items):
     """Filter out local tracks and items with no 'track' (they're usually podcast episodes)"""
     result = []
     for item in items:
-        if not item['is_local'] and 'track' in item:
+        if not item['is_local'] and 'track' in item and ':local:' not in item['track']['uri']:
             result.append(item['track'])
     return result
 
-def remove_duplicates(tracks, sanitize_names=True):
-    unique_tracks = []
+
+def remove_duplicates(items, compare: List = None, sanitize_names=True, show=False):
+    """
+    Returns a list where only the first track of the same name is kept.
+
+    If the compare list is given, items with names in the compare list will be rejected as well.
+    """
+    # TODO: Naming suggests this changes the original list when in fact it returns a new one
+    # TODO: The result is completely up to the sorting of the list, some default sort should be introduced
+    unique_items = []
     unique_names = {}
-    for track in tracks:
-        name = uniform_title(track.name).lower() if sanitize_names else track.name.lower()
+
+    # Populate the sets of unique names with entries from the compare list.
+    if compare:
+        for item in compare:
+            name = uniform_title(item.name).lower() if sanitize_names else item.name.lower()
+            for artist in item.artists:
+                if artist.name not in unique_names:
+                    unique_names[artist.name] = set()
+                unique_names[artist.name].add(name)
+
+    for item in items:
+        name = uniform_title(item.name).lower() if sanitize_names else item.name.lower()
         unique = True
-        # Reject the track if any of the featuring artists already has a song of that title
-        for artist in track.artists:
+        # Reject the item if any of the featuring artists already has an item of that title
+        for artist in item.artists:
             if artist.name not in unique_names:
                 unique_names[artist.name] = set()
             elif name in unique_names[artist.name]:
-                print(f"Discarding {name}")
                 unique = False
+                if show:
+                    print(f"Rejecting {item.name}")
                 break
             unique_names[artist.name].add(name)
         if unique:
-            unique_tracks.append(track)
-    return unique_tracks
+            unique_items.append(item)
+    return unique_items
+
 
 def uniform_title(title):
     """Does the best it can to get the actual song title from whatever the name of the track is
@@ -89,28 +109,33 @@ def uniform_title(title):
     This function tries to remove these, but it might not work in every case, especially in languages other
     than English since it works by looking for keywords
     """
-    keywords = ['remaster', 'delux', 'from', 'mix', 'version', 'edit', 'live', 'track', 'session', 'extend', 'feat',
-                'studio']
+    keywords = ['remaster', 'delux', 'demo', 'mix', 'version', 'edit', 'live', 'track', 'session', 'extend', 'feat',
+                'studio', 'instrumental', 'mono', 'take']
+
     if not any(keyword in title.lower() for keyword in keywords):
         return title
+    # TODO: Look for ways to break this
 
-    newtitle = title
     #  uses split to remove - everything after hyphen if there's a keyword there
     #  (doesn't separate ones without spaces since some titles are like-this)
-    if ' - ' in newtitle:
-        newtitle = newtitle.split(" - ", 1)
-        if any(keyword in newtitle[1].lower() for keyword in keywords):
-            newtitle = newtitle[0]
+    if ' - ' in title:
+        segments = title.split(" - ")
+        title = ''
+        for segment in segments:
+            if any(keyword in segment.lower() for keyword in keywords):
+                continue
+            title = title + segment + ' - '
+        title = title[:-3]
 
     # Removes everything in parentheses if there's a keyword inside.
-    if '(' in newtitle:
-        regex = re.compile(".*?\((.*?)\)")
-        results = re.findall(regex, title)
-        if len(results) > 0:
-            for result in results:
-                if any(keyword in result.lower() for keyword in keywords):
-                    tag = '(' + result + ')'
-                    newtitle = newtitle.replace(tag, '')
+    if any(symbol in title for symbol in ['(', ')', '[', ']']):
+        for r in ["\(.*?\)", "\[.*?\]"]:
+            regex = re.compile(r)
+            results = re.findall(regex, title)
+            if len(results) > 0:
+                for result in results:
+                    if any(keyword in result.lower() for keyword in keywords):
+                        title = title.replace(result, '')
 
-    newtitle = newtitle.strip()
-    return newtitle
+    title = title.strip()
+    return title

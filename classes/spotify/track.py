@@ -15,7 +15,15 @@ class Track(spotify.Resource):
 
     # TODO: This could later be merged into details
     feature_names = ['valence', 'energy', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'tempo', 'key', 'mode',
-                'signature']
+                     'signature']
+    feature_aliases = {
+            'dance': 'danceability',
+            'speech': 'speechiness',
+            'acoustic': 'acousticness',
+            'instrumental': 'instrumentalness',
+            'live': 'liveness',
+            'signature': 'time_signature',
+        }
     detail_names = ['uri', 'url', 'name', 'popularity', 'explicit', 'duration', 'track_number']
     detail_procedures = {
         'url': ('external_urls', lambda data: data['spotify']),
@@ -32,7 +40,7 @@ class Track(spotify.Resource):
         self.language = None
         self.confidence_scores = None
         self.sp = sp
-        self.features = {}
+        self.features = None
 
     def load(self, recursive=False):
         """
@@ -89,18 +97,16 @@ class Track(spotify.Resource):
         """
         Updates features from a Spotify API response.
 
-        It is assumed the features response is always complete.
+        Spotify doesn't have features on very short and unusual tracks, in that case the features remain an empty dict.
+        It is assumed the rest of the features responses are always complete.
         The default Spotify names for the features are unnecessarily long, so this function aliases them before copying.
         """
-        aliases = {
-            'dance': 'danceability',
-            'speech': 'speechiness',
-            'acoustic': 'acousticness',
-            'instrumental': 'instrumentalness',
-            'live': 'liveness',
-            'signature': 'time_signature',
-        }
 
-        for feature in self.feature_names:
-            key = aliases[feature] if feature in aliases else feature
-            self.features[feature] = raw_data[key]
+
+        self.features = {}
+
+        if raw_data:
+            for feature in self.feature_names:
+                key = self.feature_aliases[feature] if feature in self.feature_aliases else feature
+                self.features[feature] = raw_data[key]
+
