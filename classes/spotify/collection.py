@@ -4,12 +4,15 @@ import classes.spotify as spotify
 import classes.filters as filters
 import helpers
 from classes.spotify.resource import Resource
+
 """
 Any collection of Spotify resources
 """
 # TODO: Reimplement following: 'release_year', 'artists_number'
-SUMMABLE_DETAILS = {'popularity', 'duration', 'track_number',  'explicit', 'mode'}
-SUMMABLE_FEATURES = {'signature', 'tempo', 'valence', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'energy', 'mode'}
+SUMMABLE_DETAILS = {'popularity', 'duration', 'track_number', 'explicit', 'mode'}
+SUMMABLE_FEATURES = {'signature', 'tempo', 'valence', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'energy',
+                     'mode'}
+
 
 class Collection(spotify.Object):
     # Viable children types: All
@@ -39,6 +42,15 @@ class Collection(spotify.Object):
         """Loads, caches and returns all available children."""
         pass
 
+    def count_tracks(self):
+        if 'total_tracks' in self.attributes:
+            return self.attributes['total_tracks']
+        else:
+            tracks = 0
+            for child in self.get_complete_children():
+                tracks += child.count_tracks()
+            return tracks
+
     def gather_tracks(self):
         """Recursively return all tracks in this collection and all subcollections."""
         # TODO: Use a set to remove duplicates
@@ -54,7 +66,7 @@ class Collection(spotify.Object):
         return list(tracks)
 
     def get_complete_children(self):
-        # TODO: Make the session class recognise the correct type
+        # TODO: Right now this is handled by inheriting classes, make the session recognise the correct type itself.
         pass
 
     def get_complete_tracks(self, features=False, remove_duplicates=False):
@@ -110,9 +122,9 @@ class Collection(spotify.Object):
                     for feature in feature_sums:
                         feature_sums[feature] += child.features[feature]
             for detail_sum in detail_sums:
-                self.features[detail_sum] = detail_sums[detail_sum]/len(all_tracks)
+                self.features[detail_sum] = detail_sums[detail_sum] / len(all_tracks)
             for feature_sum in feature_sums:
-                self.features[feature_sum] = feature_sums[feature_sum]/tracks_with_features
+                self.features[feature_sum] = feature_sums[feature_sum] / tracks_with_features
         return self.features
 
 

@@ -102,7 +102,6 @@ class Track(spotify.Resource):
         The default Spotify names for the features are unnecessarily long, so this function aliases them before copying.
         """
 
-
         self.features = {}
 
         if raw_data:

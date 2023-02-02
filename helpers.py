@@ -72,7 +72,7 @@ def remove_duplicates(items, compare: List = None, sanitize_names=True, show=Fal
     If the compare list is given, items with names in the compare list will be rejected as well.
     """
     # TODO: Naming suggests this changes the original list when in fact it returns a new one
-    # TODO: The result is completely up to the sorting of the list, some default sort should be introduced
+    # TODO: The result is completely up to the sorting of the list, introduce option to keep the 'purest' name
     unique_items = []
     unique_names = {}
 
@@ -111,21 +111,14 @@ def uniform_title(title):
     """
     keywords = ['remaster', 'delux', 'demo', 'mix', 'version', 'edit', 'live', 'track', 'session', 'extend', 'feat',
                 'studio', 'instrumental', 'mono', 'take']
+    # TODO: Right now it's impossible to remove anything with 'mix', but keep 'remix'
 
     if not any(keyword in title.lower() for keyword in keywords):
         return title
     # TODO: Look for ways to break this
-
     #  uses split to remove - everything after hyphen if there's a keyword there
     #  (doesn't separate ones without spaces since some titles are like-this)
-    if ' - ' in title:
-        segments = title.split(" - ")
-        title = ''
-        for segment in segments:
-            if any(keyword in segment.lower() for keyword in keywords):
-                continue
-            title = title + segment + ' - '
-        title = title[:-3]
+
 
     # Removes everything in parentheses if there's a keyword inside.
     if any(symbol in title for symbol in ['(', ')', '[', ']']):
@@ -136,6 +129,15 @@ def uniform_title(title):
                 for result in results:
                     if any(keyword in result.lower() for keyword in keywords):
                         title = title.replace(result, '')
+
+    if ' - ' in title:
+        segments = title.split(" - ")
+        title = ''
+        for segment in segments:
+            if any(keyword in segment.lower() for keyword in keywords):
+                continue
+            title = title + segment + ' - '
+        title = title[:-3]
 
     title = title.strip()
     return title

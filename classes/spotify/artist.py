@@ -51,3 +51,6 @@ class Artist(spotify.Resource, spotify.Collection):
             self.sp.fetch_artist_albums(self)
             self.children_loaded = True
         return self.children
+
+    def get_top_tracks(self, remove_duplicates=False):
+        return self.sp.fetch_artist_top_tracks(self, remove_duplicates)

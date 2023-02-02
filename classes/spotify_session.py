@@ -56,7 +56,7 @@ class SpotifySession:
     # Get current user's playlists
 
     def get_unique_name(self, name):
-        all_names = [p["name"] for p in self.fetch_user_playlists()]
+        all_names = [p.name for p in self.fetch_current_user_playlists()]
         if name in all_names:
             i = 2
             while name + f" ({i})" in all_names:
@@ -65,10 +65,10 @@ class SpotifySession:
         return name
 
     def create_playlist(self, name, tracks):
-        user_id = self.fetch_user()["id"]
+        user_id = self.fetch_user().id
         name = self.get_unique_name(name)
         new_playlist = self.connection.user_playlist_create(user_id, name=name)
-        self.connection.playlist_add_items(new_playlist["id"], tracks)
+        self.connection.playlist_add_items(new_playlist["id"], [track.uri for track in tracks])
 
     def fetch_current_user_playlists(self):
         """Return all playlists from the library of currently logged in user."""
@@ -223,7 +223,7 @@ class SpotifySession:
                 if item['album_type'] in ['album'] and item['album_group'] == item['album_type']:
                     albums.append(self.get_resource(item))
             has_next = bool(response['next'])
-        # TODO: For now do the sorting here, later add options to manipulate the sorting (appears to have little effect)
+        # TODO: For now do the sorting here, later add options to manipulate the sorting (appears to have little effect on performance)
         # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
         if remove_duplicates:
             # Get complete album details to apply a custom sorting
@@ -310,3 +310,21 @@ class SpotifySession:
 
         else:
             raise Exception("Parser didn't recognize object")
+
+    def fetch_artist_top_tracks(self, artist, remove_duplicates=True):
+        """
+        Returns artist's 10 top tracks.
+        """
+        tracks = []
+        response = self.connection.artist_top_tracks(artist.uri)
+        for item in response['tracks']:
+            tracks.append(self.get_resource(item))
+        # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
+        if remove_duplicates:
+            # Get complete album details to apply a custom sorting
+            self.fetch_track_details(tracks)
+            # Sort albums by popularity
+            tracks = sorted(tracks, key=lambda track: track.popularity, reverse=True)
+            # Remove duplicates
+            tracks = helpers.remove_duplicates(tracks)
+        return tracks

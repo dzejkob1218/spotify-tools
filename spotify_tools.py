@@ -589,23 +589,22 @@ if __name__ == "__main__":
 
 
 
-tcv = 'spotify:artist:4zYQWYmtimAEmI6WWEzGfO'
-dp = 'spotify:artist:568ZhdwyaiCyOGJRtNYhWf'
-doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
-doors = sp.fetch_item(doors)
-doors.gather_tracks()
 
-disc = Discover(sp)
 star = '0idBt8K93C3UMOwgNLpdHB'
 test = '0hIYWWqNo6B7zHa0PhTTr6'
 test2 = '7yhjfMkKsoVnJZVPd6VJF1'
+p = '6RA3mmWJG6wDrzZEcZIwnK'
+
+phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
+doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
 
 
 
 times = time.time()
 id = test2
 playlist = sp.fetch_item(f'spotify:playlist:{id}')
-disc.extend(playlist)
+disc = Discover(sp, quick=True)
+disc.extend(70,playlist)
 print(f"Loaded in {round(time.time() - times, 2)} seconds")
 exit()
 
@@ -619,30 +618,9 @@ for track in tracks:
     print(f"{track.popularity:3} - {helpers.uniform_title(track.name)} - {track.album.name}")
 exit()
 
+tcv = 'spotify:artist:4zYQWYmtimAEmI6WWEzGfO'
+dp = 'spotify:artist:568ZhdwyaiCyOGJRtNYhWf'
+doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
+doors = sp.fetch_item(doors)
+doors.gather_tracks()
 
-"""
-REMOVE DUPLICATES:
-There are 7 artists and 7 albums in My Playlist #34
-El Guincho: 1 / 54 - 5
-Erick Cosaque: 1 / 19 - 2
-Mexican Institute Of Sound: 1 / 88 - 8
-The Doors: 1 / 141 - 15
-Alogte Oho & His Sounds of Joy: 1 / 9 - 1       
-Hallelujah Chicken Run Band: 1 / 14 - 1
-Deep Purple: 1 / 283 - 55
-Loaded in 15.77 seconds, Loaded in 18.55 seconds, Loaded in 17.61 seconds, Loaded in 16.28 seconds
-
-
-WITH DUPLICATES:
-There are 7 artists and 7 albums in My Playlist #34
-
-Mexican Institute Of Sound: 1 / 97 - 12
-The Doors: 1 / 165 - 22
-Erick Cosaque: 1 / 21 - 3
-Alogte Oho & His Sounds of Joy: 1 / 9 - 1
-El Guincho: 1 / 54 - 5
-Hallelujah Chicken Run Band: 1 / 14 - 1
-Deep Purple: 1 / 283 - 58
-Loaded in 16.34 seconds, Loaded in 16.71 seconds
-
-"""
