@@ -1,10 +1,26 @@
+
+from langdetect.lang_detect_exception import LangDetectException
+
 from typing import List
 import re
 import langdetect
+from langcodes import Language
 
 
 def detect_language(text):
     return langdetect.detect_langs(text)
+
+def language_name(lang_code):
+    return Language.get(lang_code).display_name()
+
+def quick_language(track):
+    # TODO: Measure accuracy of this against lyrics language analysis
+    """Return the best guess at a track's language from names alone."""
+    total_text = " ".join([track.name, track.album.name, track.artists[0].name])
+    try:
+        return langdetect.detect_langs(total_text)[0].lang
+    except LangDetectException:
+        return None
 
 
 def show_dict(d):

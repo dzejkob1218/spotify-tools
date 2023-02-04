@@ -251,8 +251,7 @@ def show_lyrics():
 
     if language := item.get_language():
         print(language)
-        language_name = Language.get(language[0].lang).display_name()
-        print(language_name)
+        print(helpers.language_name(language[0].lang))
         input()
     navigate(navigation_stack.pop())
 
@@ -594,15 +593,24 @@ star = '0idBt8K93C3UMOwgNLpdHB'
 test = '0hIYWWqNo6B7zHa0PhTTr6'
 test2 = '7yhjfMkKsoVnJZVPd6VJF1'
 p = '6RA3mmWJG6wDrzZEcZIwnK'
-
 phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
 doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
 
 
 
 times = time.time()
-id = test2
+id = star
 playlist = sp.fetch_item(f'spotify:playlist:{id}')
+playlist.get_children()
+tracks = playlist.children
+for track in tracks:
+    lang = track.language
+    if lang and lang == 'de':
+        print(f"{lang} - {helpers.language_name(lang):10} - {track.name}")
+    if lang and lang == 'fr':
+        print(f"{lang} - {helpers.language_name(lang):10} - {track.name}")
+exit()
+
 disc = Discover(sp, quick=True)
 disc.extend(70,playlist)
 print(f"Loaded in {round(time.time() - times, 2)} seconds")
