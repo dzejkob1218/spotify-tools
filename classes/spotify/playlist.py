@@ -34,19 +34,14 @@ class Playlist(spotify.Resource, spotify.Collection):
 
     def get_children(self):
         if not self.children_loaded:
-            print(f"PLAYLIST {self.name} LOADING CHILDREN")
-            total_tracks = self.attributes["total_tracks"]
             total_tracks_downloaded = len(self.children)
             # TODO: Generalize this check and move up to Collection class
-            if total_tracks_downloaded >= total_tracks:
+            if total_tracks_downloaded >= self.total_tracks:
                 raise Exception("Load children called on loaded collection")
             # TODO: Test this
             # Request all remaining tracks
-            self.children.extend(
-                self.sp.fetch_playlist_tracks(
-                    self.uri, total_tracks, start=total_tracks_downloaded
-                )
-            )
+            # TODO: Passing this start variable is awkward
+            self.sp.fetch_playlist_tracks(self, start=total_tracks_downloaded)
         self.children_loaded = True
         return self.children
 

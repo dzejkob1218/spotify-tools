@@ -1,3 +1,4 @@
+import time
 import classes.spotify as spotify
 from classes.spotify.track import Track
 from helpers import sort_image_urls
@@ -21,6 +22,8 @@ class Album(spotify.Resource, spotify.Collection):
         # self.children_loaded = len(self.children) == self.total
 
     def get_children(self):
+        times = time.time()
+
         if not self.children_loaded:
             #print("ALBUM LOADING CHILDREN")
             self.sp.fetch_album_tracks(self)

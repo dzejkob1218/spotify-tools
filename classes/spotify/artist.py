@@ -5,6 +5,8 @@ Additional methods:
 - Related
 
 """
+import time
+
 import classes.spotify as spotify
 from classes.spotify.album import Album
 from helpers import sort_image_urls
@@ -46,7 +48,6 @@ class Artist(spotify.Resource, spotify.Collection):
     def get_children(self):
         # TODO: album_group (appears on, single, album) is specific to the artist and is currently being missed
         if not self.children_loaded:
-            #(f"ARTIST {self.name} LOADING CHILDREN")
             # Request all remaining tracks
             self.sp.fetch_artist_albums(self)
             self.children_loaded = True

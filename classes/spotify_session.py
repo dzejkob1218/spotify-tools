@@ -1,3 +1,5 @@
+import time
+
 from typing import List, Dict
 from spotipy import Spotify
 import os
@@ -119,7 +121,7 @@ class SpotifySession:
         """
         result = []
         total_tracks = len(tracks)
-        # Run a loop requesting a 100 tracks at a time
+        # Run a loop requesting a 50 tracks at a time
         for i in range(-(-total_tracks // 50)):
             chunk = tracks[(i * 50) : (i * 50) + 50]
             chunk_size = len(chunk)
@@ -177,19 +179,24 @@ class SpotifySession:
         return tracks
 
     # TODO: Test that this works on a static playlist
-    def fetch_playlist_tracks(self, playlist_uri, total_tracks, start=0):
+    def fetch_playlist_tracks(self, playlist, start=0):
         """Download all tracks from spotify for a playlist URI."""
+        #print(f"PLAYLIST {playlist.name} LOADING CHILDREN")
         playlist_tracks = []
         # TODO: API reference quotes 50 as the limit for one request, but the old 100 seems to work fine - check other endpoints
         # Run a loop requesting a 100 tracks at a time
-        for i in range(start // 100, -(-total_tracks // 100)):
-            response = self.connection.playlist_items(
-                playlist_uri, offset=(i * 100), limit=100
-            )
-            playlist_tracks += filter_false_tracks(
-                response["items"]
-            )  # remove local tracks and podcasts from the result
-        return [self.get_resource(track) for track in playlist_tracks]
+        print()
+        times = time.time()
+        parts = -(- playlist.total_tracks // 100)
+        for i in range(start // 100, parts):
+            print(f"{i+1}/{parts} ({round((i+1) * 100/parts)}%)")
+            response = self.connection.playlist_items(playlist.uri, offset=(i * 100), limit=100)
+            spotify_tracks = filter_false_tracks(response["items"])  # remove local tracks and podcasts from the result
+            # TODO: For some rason parsing is much faster in chunks, but its still very slow
+            playlist_tracks.extend([self.get_resource(track) for track in spotify_tracks])
+        playlist.children.extend(playlist_tracks)
+        print(f"Whole thing took {time.time() - times}s")
+
 
     # TODO: Fetch functions for different types are extremely similar
     def fetch_artist_albums(self, artist, remove_duplicates=True):
@@ -201,51 +208,56 @@ class SpotifySession:
         """
         i = 0
         has_next = True
+        #print(f"ARTIST {artist.name} LOADING CHILDREN")
         albums = []
         while has_next:
             # Maximum albums for one request is 50
-            response = self.connection.artist_albums(artist.uri, offset=i * 50, limit=50)
+            # TODO: For now only albums are considered to save time, make this configurable
+            # TODO: In very rare cases (Ray Dalton) an artist will only have singles uploaded. Make it an option to load singles if there are no albums.
+            response = self.connection.artist_albums(artist.uri, album_type='album', offset=i * 50, limit=50)
             i += 1
             for item in response['items']:
                    # album groups  ['album', 'single', 'compilation', 'appears_on']
                    # compilation means it's the only artist, appears_on means it's a compilation with more artists
+                   # TODO: album_type parameter in the request above appears to actually mean the album group - test this
                    # album types  ['album', 'single', 'compilation']
-                if item['album_group'] != 'appears_on' and item['album_group'] != item['album_type']:
-                    helpers.show_dict(item)
-                    exit()
-                if item['album_group'] not in ['album', 'single', 'compilation', 'appears_on']:
-                    helpers.show_dict(item)
-                    exit()
-                if item['album_type'] not in ['album', 'single', 'compilation']:
-                    helpers.show_dict(item)
-                    exit()
-                # TODO: For now only albums are considered save time, make this configurable
-                if item['album_type'] in ['album'] and item['album_group'] == item['album_type']:
-                    albums.append(self.get_resource(item))
+                albums.append(self.get_resource(item))
             has_next = bool(response['next'])
         # TODO: For now do the sorting here, later add options to manipulate the sorting (appears to have little effect on performance)
         # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
         if remove_duplicates:
             # Get complete album details to apply a custom sorting
-            self.fetch_album_details(albums)
-            # Sort albums by popularity
-            albums = sorted(albums, key=lambda album: album.popularity, reverse=True)
+            #self.fetch_album_details(albums)
+
+            # For now use total_tracks to sort since its already in the response and it conserves the most tracks
+            albums = sorted(albums, key=lambda album: album.total_tracks, reverse=True)
             # Remove duplicates
+
             albums = helpers.remove_duplicates(albums)
+
         artist.children = albums
 
     # TODO: This function proves it's better to use whole objects as arguments instead of just URIs
     def fetch_album_tracks(self, album):
         album_tracks = []
         # Maximum tracks for one request is 50
+
+        times = time.time()
         for i in range(0, -(-album.total_tracks // 50)):
+            # TODO check if decreasing the limit to a minimum does anything to response time (unlikely)
             response = self.connection.album_tracks(album.uri, offset=(i*50), limit=50)
-            for item in response['items']:
-                item['album'] = {'uri': album.uri}  # Album URI is appended to link the track back to the album.
-                album_tracks.append(self.get_resource(item))
+
+            album_tracks.extend(response['items'])
+
         if len(album_tracks) != album.total_tracks:
             exit(f"ALBUM TRACKS: {len(album_tracks)}, ALBUM TOTAL: {album.total_tracks}")
-        album.children = album_tracks
+
+        res = []
+        for item in album_tracks:
+            item['album'] = {'uri': album.uri}  # Album URI is appended to link the track back to the album.
+            res.append(self.get_resource(item))
+
+        album.children = res
 
     def search(self, query, search_type):
         results = self.connection.search(q=query, type=search_type, limit=50)
@@ -256,6 +268,7 @@ class SpotifySession:
         return self.connection._get(url)
 
     def fetch_item(self, uri):
+        # TODO: Make this check if the item is already present before requesting
         url = uri_to_url(uri)
         return self.get_resource(self.connection._get(url))
 
@@ -264,7 +277,6 @@ class SpotifySession:
         uri = raw_data['uri']
 
         # TODO: In some cases the incoming raw_data can contain new information which currently would be ignored
-
         if uri in self.resources:
             resource = self.resources[uri]
             # Parse the new data if it contains some missing information. # TODO: test this
@@ -273,6 +285,7 @@ class SpotifySession:
             return resource
 
         resource = self.parse_resource(raw_data)
+
         self.resources[uri] = resource
         return resource
 
@@ -315,16 +328,14 @@ class SpotifySession:
         """
         Returns artist's 10 top tracks.
         """
-        tracks = []
         response = self.connection.artist_top_tracks(artist.uri)
-        for item in response['tracks']:
-            tracks.append(self.get_resource(item))
-        # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
+        tracks = [self.get_resource(track) for track in response['tracks']]
+
         if remove_duplicates:
-            # Get complete album details to apply a custom sorting
-            self.fetch_track_details(tracks)
-            # Sort albums by popularity
-            tracks = sorted(tracks, key=lambda track: track.popularity, reverse=True)
-            # Remove duplicates
+            # Remove duplicates (tracks are sorted by popularity by default)
             tracks = helpers.remove_duplicates(tracks)
         return tracks
+
+    def fetch_related_artists(self, artist):
+        response = self.connection.artist_related_artists(artist.uri)
+        return [self.get_resource(artist) for artist in response['artists']]

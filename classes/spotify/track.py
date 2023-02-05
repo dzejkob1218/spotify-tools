@@ -37,7 +37,7 @@ class Track(spotify.Resource):
 
         super().__init__(sp, raw_data)
         self.lyrics = None
-        self.language = helpers.quick_language(self)
+        #self.language = helpers.quick_language(self) # Takes approx. half a second
         self.confidence_scores = None
         self.sp = sp
         self.features = None

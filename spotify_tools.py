@@ -596,23 +596,11 @@ p = '6RA3mmWJG6wDrzZEcZIwnK'
 phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
 doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
 
-
-
 times = time.time()
-id = star
+id = test
 playlist = sp.fetch_item(f'spotify:playlist:{id}')
-playlist.get_children()
-tracks = playlist.children
-for track in tracks:
-    lang = track.language
-    if lang and lang == 'de':
-        print(f"{lang} - {helpers.language_name(lang):10} - {track.name}")
-    if lang and lang == 'fr':
-        print(f"{lang} - {helpers.language_name(lang):10} - {track.name}")
-exit()
-
 disc = Discover(sp, quick=True)
-disc.extend(70,playlist)
+disc.extend(400, playlist)
 print(f"Loaded in {round(time.time() - times, 2)} seconds")
 exit()
 

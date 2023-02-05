@@ -47,7 +47,8 @@ class Collection(spotify.Object):
             return self.attributes['total_tracks']
         else:
             tracks = 0
-            for child in self.get_complete_children():
+            # TODO: This used to call get_complete_children, but album total_tracks were already included and it wasted time - check if the change breaks anything
+            for child in self.get_children():
                 tracks += child.count_tracks()
             return tracks
 
@@ -59,7 +60,6 @@ class Collection(spotify.Object):
         tracks = set()
         for sub in self.get_children():
             if isinstance(sub, Collection):
-                sub.get_children()
                 tracks.update(sub.gather_tracks())
             elif isinstance(sub, spotify.Track):
                 tracks.add(sub)
@@ -72,6 +72,7 @@ class Collection(spotify.Object):
     def get_complete_tracks(self, features=False, remove_duplicates=False):
         """Makes sure all tracks under this collection are fully loaded and returns them."""
         all_tracks = self.gather_tracks()
+
         # Getting track features and details is much faster in bulk, it has to be done by the parent
         incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
         # TODO: Does it makes sense to merge features and details fetch methods? (one has a limit of 50, the other 100)
@@ -84,12 +85,14 @@ class Collection(spotify.Object):
                 self.sp.fetch_track_features(tracks_without_features)
 
         # TODO: Temporary check, test if there's any way to break this
+        """
         all_tracks = self.gather_tracks()
         incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
         if features:
             tracks_without_features = list(filter(lambda track: track.features is None, all_tracks))
         if incomplete_tracks or (features and tracks_without_features):
             raise Exception("Tracks without features or attributes")
+        """
 
         # TODO: Temporary simplified code for removing duplicates, later add more options
         if remove_duplicates:
