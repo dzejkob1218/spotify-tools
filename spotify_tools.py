@@ -587,8 +587,6 @@ if __name__ == "__main__":
 """
 
 
-
-
 star = '0idBt8K93C3UMOwgNLpdHB'
 test = '0hIYWWqNo6B7zHa0PhTTr6'
 test2 = '7yhjfMkKsoVnJZVPd6VJF1'
@@ -597,10 +595,10 @@ phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
 doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
 
 times = time.time()
-id = test
+id = star
 playlist = sp.fetch_item(f'spotify:playlist:{id}')
 disc = Discover(sp, quick=True)
-disc.extend(400, playlist)
+disc.extend(9999, playlist)
 print(f"Loaded in {round(time.time() - times, 2)} seconds")
 exit()
 

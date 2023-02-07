@@ -1,3 +1,4 @@
+import random
 import time
 import classes.spotify as spotify
 import helpers
@@ -7,10 +8,11 @@ from .artist import Artist
 
 class Discover:
     """Extends a source collection with related tracks."""
-
+    # TODO: Check local market available before adding tracks
     def __init__(self, sp, quick=False):
-        # TODO: Implement more complex algorithm for calculating spillover
-        self.spillover = 0.5
+        # TODO: Add an option to completely block related artists and only use related artists
+        # 0 spillover means that related artists will be reached only when tracks run out
+        self.spillover = 0.35
         self.quick = quick
         self.sp: SpotifySession = sp
         self.album_share_bonus_modifier = 0.1  # How much tracks benefit from being in an album with many shares.
@@ -50,8 +52,9 @@ class Discover:
             album.load_tracks()
             average_album_share += album.calculate_source_share(source_size)
             average_album_exploitation += album.calculate_exploitation()
+        for album in sorted(albums, key = lambda a: a.source_share, reverse = True):
             print(
-                f"{i:3}  {helpers.uniform_title(album.name):30} Share: {round(album.source_share * 100, 2):2}%, Exploitation: {round(album.exploitation * 100, 2):2}% - {album.name}")
+                f"{i:3}  {helpers.uniform_title(album.name)[:30]:30} Share: {round(album.source_share * 100, 2):2}%, Exploitation: {round(album.exploitation * 100, 2):2}%")
         average_album_exploitation /= len(albums)
         average_album_share /= len(albums)
         print(f"Average album exploitation: {round(average_album_exploitation * 100, 2)}%")
@@ -66,7 +69,7 @@ class Discover:
         i = 0
         for artist in artists:
             i += 1
-            print(i)
+            print(f"{i:5} ({round(100 * i/len(artists))}%) - {len(artist.source_tracks):5} track{'s' if len(artist.source_tracks) == 1 else ' '} - {artist.name}")
             # Calculate how much of the share an artist has.
             artist.calculate_source_share(source_size)
             if self.quick and artist.estimate_result_share(result_size) > 10:
@@ -104,43 +107,89 @@ class Discover:
 
         # Sort the artists according to shares they have in the result
         artists = sorted(artists, key=lambda a: a.result_total, reverse=True)
+        spillover_artists = []
 
         i = 0
-        # TODO: Right now the new related artist need to go through all the steps again to take their place in the hierarchy, which would cause a resorting every iteration
+        # TODO: Right now two artists can contribute all their tracks twice if changing names (Vulfpeck, Osees)
         for artist in artists:
             i += 1
 
             # See how much of the artist's material will be used for the result
             #artist.calculate_result_exploitation()
+            artist.calculate_spillover(self.spillover)
 
-            if round(artist.calculate_spillover()):
-                artist_resources = self.sp.fetch_related_artists(artist)
+            print(f"{i:3} - ", end="")
+            print(f"{artist.name[:25]:25} - ", end="")
+            print(f"Source share: {round(artist.source_share * 100, 2):5}%, ", end="")
+            print(f"Exploitation: {round(artist.exploitation * 100, 2):5}%, ", end="")
+            print(f"End exploitation: {round(artist.calculate_result_exploitation() * 100, 2):5}%, ", end="")
+            print(f"Available: {len(artist.undiscovered_tracks):3}, ", end="")
+            print(f"Result total: {artist.result_total:3}, ", end="")
+            print(f"Bleed: {artist.spillover:3}, ", end="")
+            print(f"Contribution: {artist.contribution:3}, ", end="")
+            print(f"{'top 10' if artist.top10 else ''}", end="")
+            print(f"{[contributor.name + ', ' for contributor in artist.share_contributors]}")
+
+            if artist.spillover:
                 new_artists = []
                 existing_artists = []
                 source_artists = []
-
-                for resource in artist_resources:
-                    related_artist = next((x for x in artists if x == resource), None)
-                    if related_artist:
-                        if related_artist.source_tracks and related_artist.result_total < artist.result_total:
-                            source_artists.append(related_artist)
+                artist_resources = self.sp.fetch_related_artists(artist)
+                # Some artists don't have relates
+                if artist_resources:
+                    for resource in artist_resources:
+                        related_artist = next((artist for artist in artists if artist == resource), None)
+                        if related_artist:
+                            if related_artist.source_tracks and related_artist.result_total < artist.result_total:
+                                source_artists.append(related_artist)
                         else:
-                            existing_artists.append(related_artist)
-                    else:
-                        new_artists.append(Artist(resource, self.quick))
-                artist.related_artists.extend(new_artists)
-                artist.related_artists.extend(existing_artists)
-                artist.related_artists.extend(source_artists)
+                            related_artist = next((artist for artist in spillover_artists if artist == resource), None)
+                            if related_artist:
+                                existing_artists.append(related_artist)
+                            else:
+                                new_artist = Artist(resource, self.quick)
+                                spillover_artists.append(new_artist)
+                                new_artists.append(new_artist)
+
+                    artist.related_artists.extend(new_artists)
+                    artist.related_artists.extend(existing_artists)
+                    artist.related_artists.extend(source_artists)
+                    artist.load_related_artists()
 
 
-            #print(f"{i:3} - {artist.name[:25]:25} - Source share: {round(artist.source_share * 100, 2):5}%, Exploitation: {round(artist.exploitation * 100, 2):5}%, Result total: {round(artist.result_total):3}, Available: {len(artist.undiscovered_tracks):3} End exploitation: {round(artist.calculate_result_exploitation() * 100, 2):5}%, Bleed: {artist.spillover:3},{'top 10' if artist.top10 else ''}")
-            print(artist.name)
-            for relate in artist.related_artists:
-                print(f"    {relate.name}")
+        artists.extend([artist for artist in spillover_artists if artist.contribution])
 
-        # TODO: Do something to make result size match the setting
-        total_tracks = len(result)
-        print(total_tracks)
+        total_tracks = 0
+
+        for artist in artists:
+            total_tracks += artist.contribution
+
+        print(f"TOTAL: {total_tracks}")
+
+        # Distribute the artists randomly while keeping their track order in the result playlist.
+        # TODO: Maybe shift the balance somehow to favor popular artists at first
+        most_popular = 0  # start with the four most popular artists to get a nice playlist miniature.
+        while artists and len(result) < result_size:
+            if most_popular < 4:
+                i = most_popular
+                most_popular += 1
+            else:
+                i = random.randint(0, len(artists) - 1)
+            artist = artists[i]
+            if not artist.undiscovered_tracks:
+                print(f"Artist {artist.name} queued with no tracks and {artist.contribution} contributions.")
+            else:
+                result.append(artist.undiscovered_tracks.pop(0))
+            artist.contribution -= 1
+            if artist.contribution <= 0:
+                artists.pop(i)
+
+
+
+        #for track in result:
+        #    print(f"{track.name} - {track.artists[0].name}")
+
+
 
         # TODO: Add sorting options for the results, including default to reflect the hierarchy
-        # self.sp.create_playlist(name=f"{source.name} Discovery", tracks=result)
+        self.sp.create_playlist(name=f"{source.name} Discovery", tracks=result)

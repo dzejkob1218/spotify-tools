@@ -3,14 +3,17 @@ import classes.spotify as spotify
 import helpers
 from classes.spotify_session import SpotifySession
 from .source import Source
+from typing import List
 
 class Artist(Source):
     def __init__(self, resource, quick):
         super().__init__(resource, quick)
-        self.result_total = None  # Tracks this artist will contribute to the resulting collection.
+        self.result_total = 0  # Tracks this artist will contribute to the resulting collection.
         self.top10 = False
+        self.contribution = 0
         self.spillover = None
-        self.related_artists = []
+        self.related_artists : List[Artist] = []
+        self.share_contributors = []  # Artists who passed their shares onto this artist due to relation
 
     def estimate_total_tracks(self):
         """Estimate the number of tracks in this resource without loading them."""
@@ -24,7 +27,7 @@ class Artist(Source):
 
         # Use top tracks as source if it's sufficient
         if len(undiscovered_top_tracks) >= self.result_total:
-            print(f"{self.name} using top 10.")
+            #print(f"{self.name} using top 10.")
             self.top10 = True
             self.undiscovered_tracks = undiscovered_top_tracks
             return self.undiscovered_tracks
@@ -79,24 +82,39 @@ class Artist(Source):
         # TODO: Experiment to find the best point to round the shares
         exploitation_quotient = (self.exploitation / average_exploitation)  # * exploitation_bonus_modifier
         exploitation_bonus = (exploitation_quotient - 1) * exploitation_bonus_modifier
-        self.result_total = round(self.source_share * result_size * (1 + exploitation_bonus))
+        self.result_total = int(round(self.source_share * result_size * (1 + exploitation_bonus)))
         return self.result_total
 
     def calculate_result_exploitation(self):
         """Calculate how much of the artist's material would be used in the result."""
-        return (self.result_total + len(self.source_tracks))/self.total_tracks if self.total_tracks else 0
+        e = (self.result_total + len(self.source_tracks))/self.total_tracks if self.total_tracks else 0
+        if e > 1:
+            e =1
+        return e
 
-    def calculate_spillover(self):
+    def calculate_spillover(self, spillover_parameter):
         spillover = 0
+
         # Introduce initial spillover for passing defined steps
-        for step in [5, 9]:
-            if self.result_total >= step:
-                spillover += 1
+        if spillover_parameter:
+            for step in [5, 8]:
+                if self.result_total >= step:
+                    spillover += 1
+
         exp = self.calculate_result_exploitation()
-        self.spillover = spillover + (exp * self.result_total)
+        spillover_rate = exp * spillover_parameter
+
+        self.spillover = min(int(spillover + round(spillover_rate * self.result_total)), self.result_total)
+        self.contribution = self.result_total - self.spillover
+
+        # TODO: This will prevent artists using top 10 to load all their tracks when needed
+        if self.contribution > len(self.undiscovered_tracks):
+            self.spillover += self.contribution - len(self.undiscovered_tracks)
+            self.contribution = len(self.undiscovered_tracks)
+
         return self.spillover
 
-    def load_related_artists(self, artists):
+    def load_related_artists(self):
         """
         Load and sort related artists.
 
@@ -106,5 +124,14 @@ class Artist(Source):
         - Artists present in the source collection are last
         - Artists with bigger shares than this one are removed
         """
-
-
+        related_total = len(self.related_artists)
+        share = self.spillover // related_total
+        for i in range(min(related_total, self.spillover)):
+            relate = self.related_artists[i]
+            # TODO: Let new artists load all tracks
+            if not relate.undiscovered_tracks:
+                relate.load_top_tracks()
+            relate.contribution += share + (1 if i <= self.spillover % related_total else 0)
+            relate.share_contributors.append(self)
+            print(f"{relate.name} - {share + (1 if i <= self.spillover % related_total else 0)}, ", end = "")
+        print()

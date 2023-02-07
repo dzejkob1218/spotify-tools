@@ -41,7 +41,7 @@ class Resource(spotify.Object):
                     alias, procedure = self.detail_procedures[detail]
                     value = procedure(raw_data[alias]) if procedure else raw_data[alias]
                 else:
-                    # In no procedure is stated, assume the value is available by key.
+                    # If no procedure is stated, assume the value is available by key.
                     value = raw_data[detail]
                 self.attributes[detail] = value
             except KeyError:
