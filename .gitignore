@@ -1,5 +1,6 @@
 .env
 .cache
+spotify_tools.db
 TODO
 venv
 .idea
