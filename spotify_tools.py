@@ -12,7 +12,6 @@ import classes.spotify as spotify
 from classes.discovery.discover import Discover
 from classes.spotify_session import SpotifySession
 from classes.genius_session import GeniusSession
-from classes.database import Database
 
 import time
 # The authorization scope for Spotify API needed to run this app
@@ -586,20 +585,20 @@ TEMP_time_measure = time.time()
 if __name__ == "__main__":
     navigate_home_menu()
 """
-db = Database()
-exit()
+
+
 star = '0idBt8K93C3UMOwgNLpdHB'
 test = '0hIYWWqNo6B7zHa0PhTTr6'
 test2 = '7yhjfMkKsoVnJZVPd6VJF1'
 p = '6RA3mmWJG6wDrzZEcZIwnK'
 phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
 doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
-aneta = '2BFd3L3RUKQ7uqeLHH9R19'
+
 times = time.time()
-id = aneta
+id = star
 playlist = sp.fetch_item(f'spotify:playlist:{id}')
 disc = Discover(sp, quick=True)
-disc.extend(500, playlist)
+disc.extend(9999, playlist)
 print(f"Loaded in {round(time.time() - times, 2)} seconds")
 exit()
 
