@@ -12,7 +12,7 @@ class Artist(Source):
         self.top10 = False
         self.contribution = 0
         self.spillover = None
-        self.related_artists : List[Artist] = []
+        self.related_artists: List[Artist] = []
         self.share_contributors = []  # Artists who passed their shares onto this artist due to relation
 
     def estimate_total_tracks(self):
@@ -95,12 +95,6 @@ class Artist(Source):
     def calculate_spillover(self, spillover_parameter):
         spillover = 0
 
-        # Introduce initial spillover for passing defined steps
-        if spillover_parameter:
-            for step in [5, 8]:
-                if self.result_total >= step:
-                    spillover += 1
-
         exp = self.calculate_result_exploitation()
         spillover_rate = exp * spillover_parameter
 
@@ -125,6 +119,9 @@ class Artist(Source):
         - Artists with bigger shares than this one are removed
         """
         related_total = len(self.related_artists)
+        # TODO : Some artists don't have relates
+        if not related_total:
+            return
         share = self.spillover // related_total
         for i in range(min(related_total, self.spillover)):
             relate = self.related_artists[i]

@@ -18,13 +18,13 @@ class Collection(spotify.Object):
     # Viable children types: All
     child_type = Resource
 
-    def __init__(self, sp, children=None, name=None):
+    def __init__(self, sp, children=None, children_loaded=False, name=None):
         self.sp = sp
         self.name = name or self.name  # Replace name only if specified
         self.children: List[spotify.Object] = children or []
         self.filters: List[filters.Filter] = []
         self.statistics = {}  # All average values calculated for this collection so far
-        self.children_loaded = False
+        self.children_loaded = children_loaded
         self.length = 0  # TODO: Before the collection loads fully, get its length from attribute, on load change this value to actual number of children
         self.features = {}  # Average values of child features
 
@@ -40,7 +40,9 @@ class Collection(spotify.Object):
     # TODO: Consider splitting into get and load functions
     def get_children(self):
         """Loads, caches and returns all available children."""
-        pass
+        if not self.children_loaded:
+            self.sp.load_children(self)
+        return self.children
 
     def count_tracks(self):
         if 'total_tracks' in self.attributes:
@@ -77,12 +79,12 @@ class Collection(spotify.Object):
         incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
         # TODO: Does it makes sense to merge features and details fetch methods? (one has a limit of 50, the other 100)
         if incomplete_tracks:
-            self.sp.fetch_track_details(incomplete_tracks)
+            self.sp.load_details(incomplete_tracks)
 
         if features:
             tracks_without_features = list(filter(lambda track: track.features is None, all_tracks))
             if tracks_without_features:
-                self.sp.fetch_track_features(tracks_without_features)
+                self.sp.load_features(tracks_without_features)
 
         # TODO: Temporary check, test if there's any way to break this
         """
@@ -130,44 +132,3 @@ class Collection(spotify.Object):
                 self.features[feature_sum] = feature_sums[feature_sum] / tracks_with_features
         return self.features
 
-
-"""
-Legacy Code:
-    # Takes a list of attribute names and returns average, minimum and maximum values for sub-collections
-    def average_children_details(self, attributes, child_number):
-        # Initialize the dictionary for child attributes where each value is an array of [average, min, max]
-        base_dict = {'avg': 0, 'min': None, 'max': None}
-        child_attributes = dict.fromkeys(attributes)
-        for attr in child_attributes:
-            child_attributes[attr] = base_dict.copy()
-
-        # Iterate through each child and add up the values
-        for sub in self.children:
-            for attr in attributes:
-                if attr in sub.attributes:
-                    new_value = sub.attributes[attr]
-                    total = child_attributes[attr]
-                    total['avg'] += new_value
-                    total['min'] = new_value if total['min'] is None or total['min'] > new_value else total['min']
-                    total['max'] = new_value if total['max'] is None or total['max'] < new_value else total['max']
-
-        # Divide the attributes by total tracks
-        for attr in child_attributes:
-            total = child_attributes[attr]
-            total['avg'] /= child_number
-            total['min'], total['max'] = round(total['min']), round(total['max'])
-
-        self.averages.update(child_attributes)
-        
-    
-    def search_uri(self, uri):
-        "Recursively search for a spotify resource within this object's children."
-        for child in self.children:
-            if child.uri == uri:
-                return child
-            elif match := child.search_uri(uri):
-                return match
-        return None
-    
-    
-"""

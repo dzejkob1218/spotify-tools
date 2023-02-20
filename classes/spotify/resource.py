@@ -8,7 +8,7 @@ Represents a Spotify resource that has a uri and can be retrieved from Spotify A
 class Resource(spotify.Object):
 
     # Details that need to be extracted from the Spotify data for the item to be considered completely loaded.
-    detail_names = []
+    detail_names = ['uri']
 
     # Procedures for extracting specific details. Specified as a tuple of the detail's alias and a lambda function.
     detail_procedures = {}
@@ -17,6 +17,9 @@ class Resource(spotify.Object):
         self.attributes = {}  # Static attributes reflecting an existing spotify resource, added to __dict__
         self.details_complete = False
         self.parse_details(raw_data)
+        sp.resources[self.uri] = self  # Make an entry for self in the session cache.
+        # TODO: Replace details_complete with checking for missing_details
+        self.missing_details = None
 
     def missing_detail_keys(self):
         """
@@ -48,5 +51,8 @@ class Resource(spotify.Object):
                 pass
         # Update the object with new attributes and check if the details are complete
         self.__dict__.update(self.attributes)
-        self.details_complete = not self.missing_detail_keys()
+        self.missing_details = self.missing_detail_keys()
+        if 'uri' in self.missing_details:
+            raise Exception("URI not provided to resource.")
+        self.details_complete = not self.missing_details
 

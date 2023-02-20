@@ -43,7 +43,10 @@ class Source:
             self.exploitation = len(self.source_tracks) / self.total_tracks
         # Uniqueness must be decided by the same rules, so the exploitation quotient must be between 0 and 1.
         if self.exploitation > 1 or self.exploitation < 0:
-            raise Exception(f"Discovery exploitation quotient is not a valid fraction: {self.exploitation}.")
+            # TODO: This is unreliable
+            self.exploitation = 0
+
+            #raise Exception(f"Discovery exploitation quotient is not a valid fraction: {self.exploitation}.")
         return self.exploitation
 
     def calculate_source_share(self, source_length):

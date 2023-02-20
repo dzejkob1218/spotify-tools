@@ -1,5 +1,5 @@
 import time
-from typing import List, Dict
+from typing import List, Dict, Union
 
 import requests.exceptions
 import spotipy.exceptions
@@ -8,9 +8,10 @@ import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
 import classes.spotify as spotify
-
+import mock
 import helpers
-from helpers import uri_to_url, filter_false_tracks
+from helpers import uri_to_url, filter_false_tracks, uri_list
+from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
 """
 Responsible for connecting and exchanging data with spotify
@@ -24,30 +25,41 @@ What does the app do - provides graphical interface, ease of public access and a
 Local client - for downloading everything into dbs
 
 """
+TIMEOUT_SLEEP = 30
+
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
 
-
+# TODO: Consider creating an auhorized session class as a child of the general session
 def timeout_wait(func):
-    "Proceeds with the supplied function and arguments, in case of a read timeout waits and tries again."
+    """If the decorated function returns a timeout exception, wait and try again."""
 
     def inner(*args, **kwargs):
         while True:
             try:
                 return func(*args, **kwargs)
+            # TODO: SpotifyException doesn't always mean timeout
             except (requests.exceptions.ReadTimeout, spotipy.exceptions.SpotifyException) as error:
                 # Take a break
                 print(f"GOT TIMEOUT, WAITING ({error})")
+                time.sleep(TIMEOUT_SLEEP)
 
-                time.sleep(30)
+    return inner
+
+
+def authorized(func):
+    """Raises a dedicated exception if the session is unauthorized when decorated method is called."""
+
+    def inner(self, *args, **kwargs):
+        if not self.authorized:
+            raise SpotifyToolsUnauthorizedException()
+        return func(self, *args, **kwargs)
 
     return inner
 
 
 class SpotifySession:
-
     # TODO: Check if web app needs separate sp instances
-
     def __init__(self, cache_path=None):
         self.authorized = False
         self.cache_handler = CacheFileHandler(cache_path=cache_path)
@@ -59,7 +71,8 @@ class SpotifySession:
         self.connection: Spotify = Spotify(auth_manager=SpotifyClientCredentials())
         self.connected_user = None  # cache for currently connected user's data # TODO: Replace this with a user class instance
         self.resources = {}  # Master dictionary of all instantiated unique resources indexed by URI
-
+        self.time_spent_parsing_details = 0
+        self.missing_details_found = 0
     def remove_cache(self):
         os.remove(self.cache_handler.cache_path)
 
@@ -73,303 +86,108 @@ class SpotifySession:
     # TODO: Add some authorize checks and exceptions for these
     # Get current user's playlists
 
-    def get_unique_name(self, name):
-        all_names = [p.name for p in self.fetch_current_user_playlists()]
+    @authorized
+    def unique_playlist_name(self, name):
+        """Modifies a playlist name to make it unique in the user's library."""
+        all_names = [p.name for p in self.fetch_user_playlists(self.fetch_user())]
         if name in all_names:
-            i = 2
+            i = 2  # Try adding numbers till a unique name is found starting with 2.
             while name + f" ({i})" in all_names:
                 i += 1
             name += f" ({i})"
         return name
 
+    @authorized
     @timeout_wait
-    def create_playlist(self, name, tracks):
+    def create_playlist(self, name, tracks: List[spotify.Track] = None):
+        # TODO: Longest playlist name is 100 chars, add exception handling
+        """Creates a playlist in the user's library and adds supplied tracks in chunks of 100."""
         user_id = self.fetch_user().id
-        name = self.get_unique_name(name)
-        new_playlist = self.connection.user_playlist_create(user_id, name=name)
-        for i in range(-(-len(tracks) // 100)):
-            self._add_to_playlist(tracks[i * 100: (i + 1) * 100], new_playlist)
+        name = self.unique_playlist_name(name)
+        raw_playlist = self.connection.user_playlist_create(user_id, name)
+        new_playlist = self.get_resource(raw_playlist)
+        if tracks:
+            for i in range(-(-len(tracks) // 100)):
+                self._add_to_playlist(new_playlist, tracks[i * 100: (i + 1) * 100])
+        return new_playlist
 
+    @authorized
     @timeout_wait
-    def _add_to_playlist(self, tracks, playlist):
+    def _add_to_playlist(self, playlist: spotify.Playlist, tracks: List[spotify.Track]):
         """
         Adds up to a hundred tracks to a playlist.
 
         This is a separate function because each state-modifying request needs a separate decorator to catch a timeout.
         """
+        # TODO: Add handling for invalid playlist or track parameters
         if len(tracks) > 100:
-            raise Exception("Adding tracks to playlist limited to 100 at a time.")
-        self.connection.playlist_add_items(playlist["id"], [track.uri for track in tracks])
+            raise SpotifyToolsException("Adding tracks to playlist limited to 100 at a time.")
+        self.connection.playlist_add_items(playlist.uri, [track.uri for track in tracks])
 
+    @authorized
     @timeout_wait
-    def fetch_current_user_playlists(self):
-        """Return all playlists from the library of currently logged in user."""
-        if self.authorized:
-            # TODO: Make this load all playlists instead of first 50
-            result = self.connection.current_user_playlists(limit=50)
-            if "items" in result:
-                return [self.get_resource(item) for item in result["items"]]
-
-    @timeout_wait
-    def fetch_user_playlists(self, user):
+    def fetch_user_playlists(self, user: spotify.User):
         """Return all publicly visible playlists from the library of user with given id."""
-        if self.authorized:
-            # TODO: Make this load all playlists instead of first 50
-            result = self.connection.user_playlists(user.id, limit=50)
-            if "items" in result:
-                return [self.get_resource(item) for item in result["items"]]
+        # TODO: Add handling for invalid user parameter
+        results = []
+        has_next = True
+        i = 0
+        while has_next:
+            response = self.connection.user_playlists(user.id, limit=50, offset=i * 50)
+            i += 1
+            has_next = bool(response['next'])
+            if "items" in response:
+                results.extend([self.get_resource(item) for item in response["items"]])
+        return results
 
+    @authorized
     @timeout_wait
-    def fetch_user(self, force_update=False):
-        if self.authorized:
-            if not self.connected_user or force_update:
-                user_data = self.connection.current_user()
-                self.connected_user = self.get_resource(user_data)
-            return self.connected_user
+    def fetch_user(self, update=False):
+        """Download, cache and return metadata about the currently logged in user."""
+        # TODO: Check possible ways in which the user data might change mid-session
+        if not self.connected_user or update:
+            user_data = self.connection.current_user()
+            self.connected_user = self.get_resource(user_data)
+        return self.connected_user
 
+    @authorized
+    @timeout_wait
+    def queue(self, uris):
+        """Queue one or more tracks."""
+        # TODO: Handling of invalid parameters on this and play
+        for uri in uri_list(uris):
+            self.connection.add_to_queue(uri)
+
+    @authorized
     # Time sensitive functions don't get a timeout decorator
-    def fetch_currently_playing(self):
-        if self.authorized:
-            playback = self.connection.currently_playing()
-            if not playback:
-                return None
-            current_track = playback["item"]
-            # TODO: Make this not skip the context (i.e. the playlist) of playback
-            return self.get_resource(current_track)
+    def play(self, uris):
+        """Starts playback of one or more tracks."""
+        self.connection.start_playback(uris=uri_list(uris))
 
-    def play(self, uris, queue=False):
-        if self.authorized:
-            if queue:
-                for uri in uris:
-                    self.connection.add_to_queue(uri)
-            else:
-                self.connection.start_playback(uris=uris)
+    @authorized
+    def fetch_currently_playing(self):
+        """Returns the track which is currently playing in the authorized account, or None if there's no playback."""
+        playback = self.connection.currently_playing()
+        # Spotify API doesn't return anything if there's no playback.
+        if not playback:
+            return None
+        current_track = playback["item"]
+        # TODO: Make this not skip the context (i.e. the playlist) of playback
+        return self.get_resource(current_track)
 
     # GENERAL SCOPE
     @timeout_wait
-    def fetch_track_details(self, tracks: List[spotify.Track]):
-        """
-        Downloads and updates details for a list of tracks.
-
-        Each request can fetch up to 100 tracks, so this is more efficient to do in bulk.
-        """
-        result = []
-        total_tracks = len(tracks)
-        # Run a loop requesting a 50 tracks at a time
-        for i in range(-(-total_tracks // 50)):
-            chunk = tracks[(i * 50): (i * 50) + 50]
-            chunk_size = len(chunk)
-            details = self.connection.tracks([track.uri for track in chunk])['tracks']
-            # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
-            if not len(details) == chunk_size:
-                raise Exception("Failed to fetch track details for all tracks")
-            # Pass details to each track to be parsed
-            for i in range(chunk_size):
-                if details[i]:
-                    chunk[i].parse_details(details[i])
-                else:
-                    print(f"Track {chunk[i].name} didn't fetch details")
-        return tracks
-
-    @timeout_wait
-    def fetch_album_details(self, albums: List[spotify.Album]):
-        """
-        Downloads and updates details for a list of albums.
-
-        Each request can fetch up to 100 albums, so this is more efficient to do in bulk.
-        """
-        result = []
-        total_albums = len(albums)
-        # Run a loop requesting a 100 albums at a time
-        for i in range(-(-total_albums // 20)):
-            chunk = albums[(i * 20): (i * 20) + 20]
-            chunk_size = len(chunk)
-            details = self.connection.albums([album.uri for album in chunk])['albums']
-            # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
-            if not len(details) == chunk_size:
-                raise Exception("Failed to fetch album details for all albums")
-            # Pass details to each album to be parsed
-            for i in range(chunk_size):
-                chunk[i].parse_details(details[i])
-        return albums
-
-    # TODO: Test that this works on a static playlist
-    @timeout_wait
-    def fetch_track_features(self, tracks: List[spotify.Track]):
-        """
-        Downloads and updates audio features for a list of tracks.
-
-        Each request can fetch up to 100 tracks, so this is more efficient to do in bulk.
-        """
-        result = []
-        total_tracks = len(tracks)
-        # Run a loop requesting a 100 tracks at a time
-        for i in range(-(-total_tracks // 100)):
-            chunk = tracks[(i * 100): (i * 100) + 100]
-            chunk_size = len(chunk)
-            features = self.connection.audio_features([track.uri for track in chunk])
-            # It's important that the input and output loaded_lists are the same length since they may be later combined entry for entry.
-            if not len(features) == chunk_size:
-                raise Exception("Failed to fetch track features for all tracks")
-            # Pass features to each track to be parsed
-            for i in range(chunk_size):
-                chunk[i].parse_features(features[i])
-        return tracks
-
-    # TODO: Test that this works on a static playlist
-    @timeout_wait
-    def fetch_playlist_tracks(self, playlist, start=0):
-        """Download all tracks from spotify for a playlist URI."""
-        # print(f"PLAYLIST {playlist.name} LOADING CHILDREN")
-        playlist_tracks = []
-        # TODO: API reference quotes 50 as the limit for one request, but the old 100 seems to work fine - check other endpoints
-        # Run a loop requesting a 100 tracks at a time
-        print()
-        times = time.time()
-        parts = -(- playlist.total_tracks // 100)
-        for i in range(start // 100, parts):
-            print(f"{i + 1}/{parts} ({round((i + 1) * 100 / parts)}%)")
-            response = self.connection.playlist_items(playlist.uri, offset=(i * 100), limit=100)
-            spotify_tracks = filter_false_tracks(response["items"])  # remove local tracks and podcasts from the result
-            # TODO: For some rason parsing is much faster in chunks, but its still very slow
-            playlist_tracks.extend([self.get_resource(track) for track in spotify_tracks])
-        playlist.children.extend(playlist_tracks)
-        print(f"Whole thing took {time.time() - times}s")
-
-    # TODO: Fetch functions for different types are extremely similar
-    @timeout_wait
-    def fetch_artist_albums(self, artist, remove_duplicates=True):
-        """
-        Updates artist with all albums.
-
-        By default skips singles and compilations.
-        By default removes duplicates and uses popularity to decide priority.
-        """
-        i = 0
-        has_next = True
-        # print(f"ARTIST {artist.name} LOADING CHILDREN")
-        albums = []
-        while has_next:
-            # Maximum albums for one request is 50
-            # TODO: For now only albums are considered to save time, make this configurable
-            # TODO: In very rare cases (Ray Dalton) an artist will only have singles uploaded. Make it an option to load singles if there are no albums.
-            response = self.connection.artist_albums(artist.uri, album_type='album', offset=i * 50, limit=50)
-            i += 1
-            for item in response['items']:
-                # album groups  ['album', 'single', 'compilation', 'appears_on']
-                # compilation means it's the only artist, appears_on means it's a compilation with more artists
-                # TODO: album_type parameter in the request above appears to actually mean the album group - test this
-                # album types  ['album', 'single', 'compilation']
-                albums.append(self.get_resource(item))
-            has_next = bool(response['next'])
-        # TODO: For now do the sorting here, later add options to manipulate the sorting (appears to have little effect on performance)
-        # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
-        if remove_duplicates:
-            # Get complete album details to apply a custom sorting
-
-            # For now use total_tracks to sort since its already in the response and it conserves the most tracks
-            # TODO: Sorting by album length causes weird results in some cases (e.g. Sepultura) but fetching album details adds ~20% time overhead
-            self.fetch_album_details(albums)
-            albums = sorted(albums, key=lambda album: album.popularity, reverse=True)
-            # albums = sorted(albums, key=lambda album: album.total_tracks, reverse=True)
-
-            # Remove duplicates
-
-            albums = helpers.remove_duplicates(albums)
-
-        artist.children = albums
-
-    @timeout_wait
-    # TODO: This function proves it's better to use whole objects as arguments instead of just URIs
-    def fetch_album_tracks(self, album):
-        album_tracks = []
-        # Maximum tracks for one request is 50
-
-        for i in range(0, -(-album.total_tracks // 50)):
-            # TODO check if decreasing the limit to a minimum does anything to response time (unlikely)
-            response = self.connection.album_tracks(album.uri, offset=(i * 50), limit=50)
-
-            album_tracks.extend(response['items'])
-
-        # TODO: Temporary research check
-        if len(album_tracks) != album.total_tracks:
-            exit(f"ALBUM TRACKS: {len(album_tracks)}, ALBUM TOTAL: {album.total_tracks}")
-
-        res = []
-        for item in album_tracks:
-            item['album'] = {'uri': album.uri}  # Album URI is appended to link the track back to the album.
-            res.append(self.get_resource(item))
-
-        album.children = res
-
-    @timeout_wait
-    def search(self, query, search_type):
-        results = self.connection.search(q=query, type=search_type, limit=50)
+    def search(self, query, search_type="track", limit=50):
+        results = self.connection.search(q=query, type=search_type, limit=limit)
         return results[search_type + "s"]
 
     @timeout_wait
-    def fetch_raw_item(self, uri):
-        url = uri_to_url(uri)
-        return self.connection._get(url)
-
-    @timeout_wait
-    def fetch_item(self, uri):
+    def fetch_item(self, uri, raw=False):
         # TODO: Make this check if the item is already present before requesting
+        # TODO: Right now providing an invalid uri causes a retry loop
         url = uri_to_url(uri)
         response = self.connection._get(url)
-        return self.get_resource(response)
-
-    def get_resource(self, raw_data: Dict):
-        """Return an existing resource by uri or create a new one."""
-        uri = raw_data['uri']
-
-        # TODO: In some cases the incoming raw_data can contain new information which currently would be ignored
-        if uri in self.resources:
-            resource = self.resources[uri]
-            # Parse the new data if it contains some missing information. # TODO: test this
-            if any(missing in raw_data for missing in resource.missing_detail_keys()):
-                resource.parse_details(raw_data)
-            return resource
-
-        resource = self.parse_resource(raw_data)
-
-        self.resources[uri] = resource
-        return resource
-
-    def parse_resource(self, raw_data: Dict):
-        """This should be the only method through which instances of Resource are initialized."""
-        if "type" in raw_data and raw_data["type"] == "playlist":
-            # Parse track data that may be included with the playlist data
-            # TODO: This assumes that 'items' is always present in response objects of type 'playlist', make sure this is true
-            children_data = raw_data["tracks"].pop("items", None)
-            children = (
-                [self.get_resource(child) for child in filter_false_tracks(children_data)]
-                if children_data
-                else None
-            )
-            return spotify.Playlist(self, raw_data=raw_data, children=children)
-
-        if "type" in raw_data and raw_data["type"] == "user":
-            return spotify.User(self, raw_data=raw_data)
-
-        if "type" in raw_data and raw_data["type"] == "album":
-            artists = [self.get_resource(artist) for artist in raw_data['artists']]
-            return spotify.Album(self, raw_data, artists)
-
-        if "type" in raw_data and raw_data["type"] == "artist":
-            return spotify.Artist(self, raw_data=raw_data)
-
-        elif "type" in raw_data and raw_data["type"] == "track" or "track" in raw_data:
-            # TODO: Album and artist data acquired through track is not complete. Making two more requests for each track tanks the performance.
-            album = self.get_resource(raw_data['album'])
-            artists = [self.get_resource(artist) for artist in raw_data['artists']]
-            track = spotify.Track(self, raw_data, artists=artists, album=album)
-            # TODO: Does adding incomplete tracks to an album help anything right now?
-            album.children.append(track)
-            return track
-
-        else:
-            raise Exception("Parser didn't recognize object")
+        return response if raw else self.get_resource(response)
 
     @timeout_wait
     def fetch_artist_top_tracks(self, artist, remove_duplicates=True):
@@ -378,7 +196,7 @@ class SpotifySession:
         """
         response = self.connection.artist_top_tracks(artist.uri)
         tracks = [self.get_resource(track) for track in response['tracks']]
-
+        # TODO: This shouldn't be here
         if remove_duplicates:
             # Remove duplicates (tracks are sorted by popularity by default)
             tracks = helpers.remove_duplicates(tracks)
@@ -388,3 +206,247 @@ class SpotifySession:
     def fetch_related_artists(self, artist):
         response = self.connection.artist_related_artists(artist.uri)
         return [self.get_resource(artist) for artist in response['artists']]
+
+    # Shorthands
+    def load_children(self, items):
+        return self.load_bulk(items, children=True)
+
+    def load_features(self, items):
+        return self.load_bulk(items, features=True)
+
+    def load_details(self, items):
+        return self.load_bulk(items, details=True)
+
+    # TODO: Add a decorator for making single item arguments into a list
+    def load_bulk(self, items: List[spotify.Resource], details=False, features=False, children=False):
+        """
+        Downloads and updates details and features for a list of resources.
+
+        The resources can be of mixed types, but at least one request to the API has to be made for each type of item.
+        Features are only available for tracks.
+        There are cases where some tracks in a collection are missing their details, while others are missing features.
+        """
+
+        # TODO: Make this more elegant
+        if not isinstance(items, list):
+            items = [items]
+
+
+        # TODO: Add cases for all types
+        # TODO: Add logic for recursive loading
+        # Define request limit, methods for requesting and parsing respectively for each requested resource.
+        cases = {
+            'features': {
+                spotify.Track: (self._track_features, self._match_features, 100)
+            } if features else None,
+            'details': {
+                spotify.Track: (self._track_details, self._match_details, 50),
+                spotify.Album: (self._album_details, self._match_details, 20),
+            } if details else None,
+            'children': {
+                spotify.Playlist: (self._playlist_tracks, self._parse_children, 100),
+                spotify.Album: (self._album_tracks, self._parse_children, 50),
+                spotify.Artist: (self._artist_albums, self._parse_children, 50)
+            } if children else None,
+        }
+
+        fetch_methods = {
+            'details': self._fetch_bulk_details,
+            'features': self._fetch_bulk_details,
+            'children': self._fetch_bulk_children,
+        }
+
+        # Separate the items into lists by type.
+        sorted_items = {}
+        for item in items:
+            if type(item) not in sorted_items:
+                sorted_items[type(item)] = []
+            sorted_items[type(item)].append(item)
+
+        # For each sorted list that is left, download and parse details or features.
+        for c in cases:
+            case = cases[c]
+            if not case:
+                continue
+            for resource in case:
+                if resource in sorted_items:
+                    fetch_methods[c](sorted_items[resource], *case[resource])
+        # TODO: is this return value ever used?
+        return items
+
+    @staticmethod
+    def _fetch_bulk_details(items, request_method, parsing_method, limit):
+        """Passes items to request_method in chunks not exceeding the limit and passes the results to parsing_method."""
+        for i in range(-(-len(items) // limit)):
+            chunk = items[(i * limit): (i * limit) + limit]
+            response = request_method(chunk)  # Get response for each chunk.
+            parsing_method(chunk, response)
+
+    @staticmethod
+    def _fetch_bulk_children(items, request_method, parsing_method, limit):
+        """Calls request_method for each item until the results are complete and passes them to parsing_method."""
+        for item in items:
+            children = []
+            offset = len(item.children)  # Compensate for children already known.
+            has_next = True
+            while has_next:
+                response = request_method(item, offset=offset)
+                offset += limit
+                children.extend(response['items'])
+                has_next = bool(response['next'])
+            parsing_method(item, children)
+
+    def _parse_children(self, item, children):
+        # TODO: removing duplicates should be implemented early on before any sort of recursion kicks in
+        children = [self.get_resource(child) for child in children]
+        item.children.extend(children)
+        item.children_loaded = True
+
+    @timeout_wait
+    def _track_features(self, tracks: List[spotify.Track]):
+        return self.connection.audio_features([track.uri for track in tracks])
+
+    @timeout_wait
+    def _track_details(self, tracks: List[spotify.Track]):
+        return self.connection.tracks([track.uri for track in tracks])['tracks']
+
+    @timeout_wait
+    def _album_details(self, albums: List[spotify.Album]):
+        return self.connection.albums([album.uri for album in albums])['albums']
+
+    @staticmethod
+    def _match_details(items: List[spotify.Resource], details):
+        """"""
+        for i in range(len(items)):
+            if details[i]:
+                items[i].parse_details(details[i])
+            else:
+                # TODO: Replace this with logging
+                # Another edge case that has never happened so far
+                raise SpotifyToolsException(f"Failed to fetch details for {items[i].uri}.")
+
+    @staticmethod
+    def _match_features(tracks: List[spotify.Track], features):
+        """"""
+        # Unlike details, features are sometimes intentionally left blank.
+        for i in range(len(tracks)):
+            tracks[i].parse_features(features[i])
+
+    @timeout_wait
+    def _playlist_tracks(self, playlist, offset):
+        """Download all tracks from spotify for a playlist URI."""
+        response = self.connection.playlist_items(playlist.uri, offset=offset, limit=100)
+        response["items"] = filter_false_tracks(response["items"])  # Remove local tracks and podcasts from the result.
+        return response
+
+    @timeout_wait
+    def _artist_albums(self, artist, offset=0):
+        # TODO: For now only albums are considered to save time, make this configurable
+        # TODO: In very rare cases (Ray Dalton) an artist will only have singles uploaded. Make it an option to load singles if there are no albums.
+        return self.connection.artist_albums(artist.uri, album_type='album', offset=offset, limit=50)
+        # Notes:
+        # album groups  ['album', 'single', 'compilation', 'appears_on']
+        # album types  ['album', 'single', 'compilation']
+        # compilation means it's the only artist, appears_on means it's a compilation with more artists
+        # TODO: album_type parameter in the request above appears to actually mean the album group - test this
+        # For some reason, sometimes two albums exist which are exactly the same, except for their uri.
+
+    @timeout_wait
+    def _album_tracks(self, album, offset=0):
+        response = self.connection.album_tracks(album.uri, offset=offset, limit=50)
+        # Album data is missing from the tracks, the album's URI is appended to link the track back to the album.
+        response["items"] = filter_false_tracks(response["items"])  # Remove podcasts from the result.
+        for track in response['items']:
+            track['album'] = {'uri': album.uri}
+        return response
+
+        # TODO: Replace this with logging a warning
+        if len(album_tracks) != album.total_tracks:
+            exit(f"ALBUM TRACKS: {len(album_tracks)}, ALBUM TOTAL: {album.total_tracks}")
+
+    # PARSING
+    def get_resource(self, raw_data: Dict):
+        """Return an existing resource by uri or create a new one."""
+        if 'uri' not in raw_data:
+            raise SpotifyToolsException(f"No URI supplied for resource: {raw_data}.")
+        uri = raw_data['uri']
+        # Check if the resource exists and return it if yes.
+        if uri in self.resources:
+            resource = self.resources[uri]
+            time0 = time.time()
+            # Parse the new data if it contains some missing information. # TODO: test performance on this
+            # TODO isn't doing it this way more resource-intensive than just parsing the details each time?
+            if resource.missing_details and any(missing in raw_data for missing in resource.missing_details):
+                self.missing_details_found += 1
+                resource.parse_details(raw_data)
+            self.time_spent_parsing_details += time.time() - time0
+            return resource
+        else:
+            # Create a new resource otherwise.
+            resource = self._parse_resource(raw_data)
+            return resource
+
+    def _parse_resource(self, raw_data: Dict):
+        """
+        Recognizes the resource type from the raw data and calls the correct constructor or method.
+
+        This should be the only way through which instances of Resource are initialized.
+        """
+
+        # Playlist
+        if "type" in raw_data and raw_data["type"] == "playlist":
+            return self._parse_playlist(raw_data)
+
+        # Album
+        if "type" in raw_data and raw_data["type"] == "album":
+            return self._parse_album(raw_data)
+
+        # Track
+        if "type" in raw_data and raw_data["type"] == "track" or "track" in raw_data:
+            return self._parse_track(raw_data)
+
+        # User
+        if "type" in raw_data and raw_data["type"] == "user":
+            return spotify.User(self, raw_data=raw_data)
+
+        # Artist
+        if "type" in raw_data and raw_data["type"] == "artist":
+            return spotify.Artist(self, raw_data=raw_data)
+
+        raise SpotifyToolsException(f"Parser didn't recognize object: {raw_data}")
+
+    def _parse_playlist(self, raw_data):
+        # Parse track data that may be included with the playlist data.
+        if children_data := raw_data["tracks"].pop("items", None):
+            children = [self.get_resource(track) for track in filter_false_tracks(children_data)]
+            children_loaded = not raw_data["tracks"]["next"]
+        else:
+            children = None
+            children_loaded = False
+        # Create the playlist.
+        return spotify.Playlist(self, raw_data=raw_data, children=children, children_loaded=children_loaded)
+
+    def _parse_album(self, raw_data):
+        # Parse artist data.
+        artists = [self.get_resource(artist) for artist in raw_data['artists']]
+        # Create the album.
+        album = spotify.Album(self, raw_data=raw_data, artists=artists)
+        # Tracks in album data miss their 'album' key, so it has to be injected after the album is created.
+        if children_data := raw_data["tracks"].pop("items", None) if "tracks" in raw_data else None:
+            children = []
+            for child in filter_false_tracks(children_data):
+                # Restore the reference to the album if it's missing.
+                if 'album' not in child:
+                    child['album'] = {'uri': raw_data['uri']}
+                children.append(self.get_resource(child))
+            album.children = children
+            album.children_loaded = not raw_data["tracks"]["next"]
+        return album
+
+    def _parse_track(self, raw_data):
+        # Parse artist and album data.
+        artists = [self.get_resource(artist) for artist in raw_data['artists']]
+        album = self.get_resource(raw_data['album'])
+        # Create the track.
+        track = spotify.Track(self, raw_data=raw_data, artists=artists, album=album)
+        return track

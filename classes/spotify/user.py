@@ -2,7 +2,7 @@ import classes.spotify as spotify
 
 
 class User(spotify.Resource, spotify.Collection):
-    # TODO: Images?
+    # TODO: Urls? Images?
     child_type = spotify.Playlist
     detail_names = ['uri', 'id', 'followers', 'name']
     detail_procedures = {

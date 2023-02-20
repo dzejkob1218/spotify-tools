@@ -72,10 +72,12 @@ def navigate_artist():
     artist = item.artists[0]
     navigate(artist)
 
+
 def navigate_album():
     item: spotify.Track = navigation_stack[-1]
     # TODO: Add support for navigating a list of artists with the first artist as default argument
     navigate(item.album)
+
 
 def navigate_home_menu():
     navigation_stack.clear()
@@ -85,10 +87,6 @@ def navigate_home_menu():
         user = sp.fetch_user()
         print(f"Logged in as {user.name}")
         currently_playing = sp.fetch_currently_playing()
-
-        print("Missing details")
-        print(currently_playing.album.missing_detail_keys())
-        print(currently_playing.artists[0].missing_detail_keys())
 
         if currently_playing:
             print(
@@ -228,16 +226,16 @@ def print_details():
     item = navigation_stack[-1]
     details = {**item.attributes, **item.get_features()}
 
-    if isinstance(item, spotify.Track):
-        confidence_scores = item.get_confidence_scores()
-        details.update({'lyrics': bool(item.lyrics), 'language': item.language})
+    #if isinstance(item, spotify.Track):
+        #confidence_scores = item.get_confidence_scores()
+        #details.update({'lyrics': bool(item.lyrics), 'language': item.language})
     for i in details:
         value = details[i]
         if isinstance(value, float):
                 value = round(value, 2)
         print(f"{i} {'.' * (25 - len(i))} {value}", end='')
-        if isinstance(item, spotify.Track) and i in confidence_scores:
-            print(f" ({round(confidence_scores[i],2)}) ", end='')
+        #if isinstance(item, spotify.Track) and i in confidence_scores:
+        #    print(f" ({round(confidence_scores[i],2)}) ", end='')
         print()
 
     input()
@@ -581,40 +579,20 @@ all_tracks = sorted(artist.gather_tracks(), key=lambda track: track.popularity, 
 all_tracks = helpers.remove_duplicates(all_tracks)
 for track in all_tracks:
     print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
+    """
+
 TEMP_time_measure = time.time()
+
 if __name__ == "__main__":
     navigate_home_menu()
-"""
 
-
+# uris for testing
 star = '0idBt8K93C3UMOwgNLpdHB'
 test = '0hIYWWqNo6B7zHa0PhTTr6'
 test2 = '7yhjfMkKsoVnJZVPd6VJF1'
 p = '6RA3mmWJG6wDrzZEcZIwnK'
 phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
 doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
-
-times = time.time()
-id = star
-playlist = sp.fetch_item(f'spotify:playlist:{id}')
-disc = Discover(sp, quick=True)
-disc.extend(9999, playlist)
-print(f"Loaded in {round(time.time() - times, 2)} seconds")
-exit()
-
-exit()
-print(f"Albums: {len(doors.children)}")
-print(f"Tracks: {len(tracks)}")
-tracks = sorted(tracks, key=lambda track: track.popularity, reverse=True)
-tracks = helpers.remove_duplicates(tracks)
-print(f"Unique tracks: {len(tracks)}")
-for track in tracks:
-    print(f"{track.popularity:3} - {helpers.uniform_title(track.name)} - {track.album.name}")
-exit()
-
 tcv = 'spotify:artist:4zYQWYmtimAEmI6WWEzGfO'
 dp = 'spotify:artist:568ZhdwyaiCyOGJRtNYhWf'
-doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
-doors = sp.fetch_item(doors)
-doors.gather_tracks()
-
+dopethrone = 'spotify:album:2ntG8GB5e2RuOYkSmBo1ij'

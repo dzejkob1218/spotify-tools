@@ -59,7 +59,7 @@ class Track(spotify.Resource):
         # TODO: Measure performance cost of loading features with track by default
         """Add audio features to track attributes."""
         if not self.features:
-            self.sp.fetch_track_features([self])
+            self.sp.load_features(self)
         return self.features
 
     def get_lyrics(self):
@@ -103,7 +103,6 @@ class Track(spotify.Resource):
         """
 
         self.features = {}
-
         if raw_data:
             for feature in self.feature_names:
                 key = self.feature_aliases[feature] if feature in self.feature_aliases else feature

@@ -7,6 +7,19 @@ import langdetect
 from langcodes import Language
 
 
+def uri_list(uris):
+    """
+    Returns the parameter enclosed in a list if the parameter was a string.
+
+    Intended for use with some Spotify API endpoints that only accept a list of uris.
+    """
+    match uris:
+        case str():
+            return[uris]
+        case _:
+            return uris
+
+
 def detect_language(text):
     return langdetect.detect_langs(text)
 
@@ -70,14 +83,24 @@ def track_key(key, mode):
     keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     return keys[key] + ('m' if not mode else '')
 
-
+# TODO: This name is misleading
 # Removes podcast episodes and local tracks
 def filter_false_tracks(items):
     """Filter out local tracks and items with no 'track' (they're usually podcast episodes)"""
     result = []
     for item in items:
-        if not item['is_local'] and 'track' in item and ':local:' not in item['track']['uri']:
-            result.append(item['track'])
+        # Check if the item contains a track.
+        if 'track' in item:
+            # Item is track context.
+            track = item['track']
+        elif item['type'] == 'track':
+            # Item is track.
+            track = item
+        else:
+            break
+        # Check if track is local.
+        if not track['is_local'] and ':local:' not in track['uri']:
+            result.append(track)
     return result
 
 

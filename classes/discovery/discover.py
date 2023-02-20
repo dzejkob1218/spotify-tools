@@ -20,7 +20,7 @@ class Discover:
         # TODO: Add a variable that buffs smaller artists
 
     # For now only support playlist for simplicity
-    def extend(self, result_size, source: spotify.Playlist):
+    def extend(self, source: spotify.Playlist, result_size):
         # TODO: Would it be better to make these dicts for faster indexing?
         artists = []
         albums = []
@@ -170,7 +170,7 @@ class Discover:
         # TODO: Maybe shift the balance somehow to favor popular artists at first
         most_popular = 0  # start with the four most popular artists to get a nice playlist miniature.
         while artists and len(result) < result_size:
-            if most_popular < 4:
+            if len(artists) >= 4 and most_popular < 4:
                 i = most_popular
                 most_popular += 1
             else:

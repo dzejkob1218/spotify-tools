@@ -7,25 +7,14 @@ from helpers import sort_image_urls
 class Album(spotify.Resource, spotify.Collection):
     child_type = Track
     # TODO: 'genre' is often found in album responses, but it seems to never have a value - test this
-    detail_names = ['uri', 'url', 'images', 'album_type', 'name', 'release_date', 'release_date_precision', 'total_tracks', 'popularity', 'label', 'genres', 'copyrights']
+    detail_names = ['uri', 'url', 'images', 'album_type', 'name', 'release_date', 'release_date_precision',
+                    'total_tracks', 'popularity', 'label', 'genres', 'copyrights']
     detail_procedures = {
         'url': ('external_urls', lambda data: data['spotify']),
         'images': ('images', lambda data: sort_image_urls(data)),
     }
 
-    # TODO: When called for directly (like in a search) every album comes with first 50 tracks, which in most cases is all of them.
-    # TODO: These tracks miss album (obv), popularity and external id. Measure how much saving that data would save.
-    def __init__(self, sp, raw_data, artists, children=None):
+    def __init__(self, sp, raw_data, artists, children=None, children_loaded=False):
         spotify.Resource.__init__(self, sp, raw_data)
-        spotify.Collection.__init__(self, sp, children)
+        spotify.Collection.__init__(self, sp, children, children_loaded)
         self.artists = artists
-        # self.children_loaded = len(self.children) == self.total
-
-    def get_children(self):
-        times = time.time()
-
-        if not self.children_loaded:
-            #print("ALBUM LOADING CHILDREN")
-            self.sp.fetch_album_tracks(self)
-            self.children_loaded = True
-        return self.children
