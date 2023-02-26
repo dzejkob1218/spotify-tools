@@ -6,3 +6,4 @@ venv
 __pycache__
 .spotify_caches
 feature_masterlist.py
+.pytest_cache

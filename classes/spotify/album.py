@@ -1,4 +1,3 @@
-import time
 import classes.spotify as spotify
 from classes.spotify.track import Track
 from helpers import sort_image_urls

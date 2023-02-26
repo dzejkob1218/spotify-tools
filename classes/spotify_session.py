@@ -8,8 +8,8 @@ import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
 import classes.spotify as spotify
-import mock
 import helpers
+from classes.resource_factory import ResourceFactory
 from helpers import uri_to_url, filter_false_tracks, uri_list
 from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
@@ -39,7 +39,7 @@ def timeout_wait(func):
             try:
                 return func(*args, **kwargs)
             # TODO: SpotifyException doesn't always mean timeout
-            except (requests.exceptions.ReadTimeout, spotipy.exceptions.SpotifyException) as error:
+            except (requests.exceptions.ReadTimeout) as error:
                 # Take a break
                 print(f"GOT TIMEOUT, WAITING ({error})")
                 time.sleep(TIMEOUT_SLEEP)
@@ -49,43 +49,36 @@ def timeout_wait(func):
 
 def authorized(func):
     """Raises a dedicated exception if the session is unauthorized when decorated method is called."""
-
     def inner(self, *args, **kwargs):
         if not self.authorized:
             raise SpotifyToolsUnauthorizedException()
         return func(self, *args, **kwargs)
-
     return inner
 
 
 class SpotifySession:
     # TODO: Check if web app needs separate sp instances
     def __init__(self, cache_path=None):
+        """ Initializes an unauthorized connection - only endpoints not accessing user info will work."""
         self.authorized = False
         self.cache_handler = CacheFileHandler(cache_path=cache_path)
-        # TODO: this auth manager is not used yet, it is waiting to react when user wants to authenticate, it should be initialized at a later time though
-        self.auth_manager = SpotifyOAuth(
-            scope=SCOPE, cache_handler=self.cache_handler, show_dialog=True
-        )
-        # This initializes an unauthorized connection - only endpoints not accessing user info will work.
         self.connection: Spotify = Spotify(auth_manager=SpotifyClientCredentials())
-        self.connected_user = None  # cache for currently connected user's data # TODO: Replace this with a user class instance
+        self.factory = ResourceFactory(self)  # TODO: Experiment with shared factories for sessions.
+        self.connected_user = None  # Cache for currently connected user's data.
         self.resources = {}  # Master dictionary of all instantiated unique resources indexed by URI
-        self.time_spent_parsing_details = 0
-        self.missing_details_found = 0
+
     def remove_cache(self):
         os.remove(self.cache_handler.cache_path)
 
     def authorize(self, code=None):
-        self.auth_manager.get_access_token(code)
-        self.connection = Spotify(auth_manager=self.auth_manager)
-        # TODO: get a better way of checking if the authorization was successful
+        auth_manager = SpotifyOAuth(scope=SCOPE, cache_handler=self.cache_handler, show_dialog=True)
+        auth_manager.get_access_token(code)
+        self.connection = Spotify(auth_manager=auth_manager)
+        # TODO: Check if timeouts can be handled by spotipy
+        #self.connection.requests_timeout = 30
         self.authorized = True
 
     # AUTHORIZED SCOPE
-    # TODO: Add some authorize checks and exceptions for these
-    # Get current user's playlists
-
     @authorized
     def unique_playlist_name(self, name):
         """Modifies a playlist name to make it unique in the user's library."""
@@ -101,11 +94,11 @@ class SpotifySession:
     @timeout_wait
     def create_playlist(self, name, tracks: List[spotify.Track] = None):
         # TODO: Longest playlist name is 100 chars, add exception handling
-        """Creates a playlist in the user's library and adds supplied tracks in chunks of 100."""
+        """Creates a playlist in the user's library and adds supplied tracks in batches of 100."""
         user_id = self.fetch_user().id
         name = self.unique_playlist_name(name)
         raw_playlist = self.connection.user_playlist_create(user_id, name)
-        new_playlist = self.get_resource(raw_playlist)
+        new_playlist = self.factory.get_resource(raw_playlist)
         if tracks:
             for i in range(-(-len(tracks) // 100)):
                 self._add_to_playlist(new_playlist, tracks[i * 100: (i + 1) * 100])
@@ -137,7 +130,7 @@ class SpotifySession:
             i += 1
             has_next = bool(response['next'])
             if "items" in response:
-                results.extend([self.get_resource(item) for item in response["items"]])
+                results.extend([self.factory.get_resource(item) for item in response["items"]])
         return results
 
     @authorized
@@ -147,7 +140,7 @@ class SpotifySession:
         # TODO: Check possible ways in which the user data might change mid-session
         if not self.connected_user or update:
             user_data = self.connection.current_user()
-            self.connected_user = self.get_resource(user_data)
+            self.connected_user = self.factory.get_resource(user_data)
         return self.connected_user
 
     @authorized
@@ -173,13 +166,17 @@ class SpotifySession:
             return None
         current_track = playback["item"]
         # TODO: Make this not skip the context (i.e. the playlist) of playback
-        return self.get_resource(current_track)
+        return self.factory.get_resource(current_track)
 
     # GENERAL SCOPE
     @timeout_wait
-    def search(self, query, search_type="track", limit=50):
-        results = self.connection.search(q=query, type=search_type, limit=limit)
-        return results[search_type + "s"]
+    def search(self, query, limit=50, tracks=False, artists=False, playlists=False, albums=False):
+        search_types = [('track', tracks), ('artist', artists), ('playlist', playlists), ('album', albums)]
+        search_type = ",".join(k for k, v in search_types if v)
+        results = self.connection.search(q=query, limit=limit, type=search_type)
+        for resource in results:
+            results[resource] = [self.factory.get_resource(data) for data in results[resource]['items']]
+        return results
 
     @timeout_wait
     def fetch_item(self, uri, raw=False):
@@ -187,7 +184,7 @@ class SpotifySession:
         # TODO: Right now providing an invalid uri causes a retry loop
         url = uri_to_url(uri)
         response = self.connection._get(url)
-        return response if raw else self.get_resource(response)
+        return response if raw else self.factory.get_resource(response)
 
     @timeout_wait
     def fetch_artist_top_tracks(self, artist, remove_duplicates=True):
@@ -195,7 +192,7 @@ class SpotifySession:
         Returns artist's 10 top tracks.
         """
         response = self.connection.artist_top_tracks(artist.uri)
-        tracks = [self.get_resource(track) for track in response['tracks']]
+        tracks = [self.factory.get_resource(track) for track in response['tracks']]
         # TODO: This shouldn't be here
         if remove_duplicates:
             # Remove duplicates (tracks are sorted by popularity by default)
@@ -205,7 +202,7 @@ class SpotifySession:
     @timeout_wait
     def fetch_related_artists(self, artist):
         response = self.connection.artist_related_artists(artist.uri)
-        return [self.get_resource(artist) for artist in response['artists']]
+        return [self.factory.get_resource(artist) for artist in response['artists']]
 
     # Shorthands
     def load_children(self, items):
@@ -237,16 +234,18 @@ class SpotifySession:
         # Define request limit, methods for requesting and parsing respectively for each requested resource.
         cases = {
             'features': {
-                spotify.Track: (self._track_features, self._match_features, 100)
+                spotify.Track: (self._track_features, self._match_features, 100),
             } if features else None,
             'details': {
                 spotify.Track: (self._track_details, self._match_details, 50),
                 spotify.Album: (self._album_details, self._match_details, 20),
+                spotify.Artist: (self._artist_details, self._match_details, 50),
+                spotify.Playlist: (self._playlist_details, self._match_details, 1),
             } if details else None,
             'children': {
                 spotify.Playlist: (self._playlist_tracks, self._parse_children, 100),
                 spotify.Album: (self._album_tracks, self._parse_children, 50),
-                spotify.Artist: (self._artist_albums, self._parse_children, 50)
+                spotify.Artist: (self._artist_albums, self._parse_children, 50),
             } if children else None,
         }
 
@@ -276,11 +275,11 @@ class SpotifySession:
 
     @staticmethod
     def _fetch_bulk_details(items, request_method, parsing_method, limit):
-        """Passes items to request_method in chunks not exceeding the limit and passes the results to parsing_method."""
+        """Passes items to request_method in batches not exceeding the limit and passes the results to parsing_method."""
         for i in range(-(-len(items) // limit)):
-            chunk = items[(i * limit): (i * limit) + limit]
-            response = request_method(chunk)  # Get response for each chunk.
-            parsing_method(chunk, response)
+            batch = items[(i * limit): (i * limit) + limit]
+            response = request_method(batch)  # Get response for each batch.
+            parsing_method(batch, response)
 
     @staticmethod
     def _fetch_bulk_children(items, request_method, parsing_method, limit):
@@ -298,7 +297,7 @@ class SpotifySession:
 
     def _parse_children(self, item, children):
         # TODO: removing duplicates should be implemented early on before any sort of recursion kicks in
-        children = [self.get_resource(child) for child in children]
+        children = [self.factory.get_resource(child) for child in children]
         item.children.extend(children)
         item.children_loaded = True
 
@@ -307,8 +306,16 @@ class SpotifySession:
         return self.connection.audio_features([track.uri for track in tracks])
 
     @timeout_wait
+    def _artist_details(self, artists: List[spotify.Artist]):
+        return self.connection.artists([artist.uri for artist in artists])['artists']
+
+    @timeout_wait
     def _track_details(self, tracks: List[spotify.Track]):
         return self.connection.tracks([track.uri for track in tracks])['tracks']
+
+    @timeout_wait
+    def _playlist_details(self, playlist: List[spotify.Playlist]):
+        return [self.connection.playlist(playlist[0].uri)]
 
     @timeout_wait
     def _album_details(self, albums: List[spotify.Album]):
@@ -363,90 +370,3 @@ class SpotifySession:
         # TODO: Replace this with logging a warning
         if len(album_tracks) != album.total_tracks:
             exit(f"ALBUM TRACKS: {len(album_tracks)}, ALBUM TOTAL: {album.total_tracks}")
-
-    # PARSING
-    def get_resource(self, raw_data: Dict):
-        """Return an existing resource by uri or create a new one."""
-        if 'uri' not in raw_data:
-            raise SpotifyToolsException(f"No URI supplied for resource: {raw_data}.")
-        uri = raw_data['uri']
-        # Check if the resource exists and return it if yes.
-        if uri in self.resources:
-            resource = self.resources[uri]
-            time0 = time.time()
-            # Parse the new data if it contains some missing information. # TODO: test performance on this
-            # TODO isn't doing it this way more resource-intensive than just parsing the details each time?
-            if resource.missing_details and any(missing in raw_data for missing in resource.missing_details):
-                self.missing_details_found += 1
-                resource.parse_details(raw_data)
-            self.time_spent_parsing_details += time.time() - time0
-            return resource
-        else:
-            # Create a new resource otherwise.
-            resource = self._parse_resource(raw_data)
-            return resource
-
-    def _parse_resource(self, raw_data: Dict):
-        """
-        Recognizes the resource type from the raw data and calls the correct constructor or method.
-
-        This should be the only way through which instances of Resource are initialized.
-        """
-
-        # Playlist
-        if "type" in raw_data and raw_data["type"] == "playlist":
-            return self._parse_playlist(raw_data)
-
-        # Album
-        if "type" in raw_data and raw_data["type"] == "album":
-            return self._parse_album(raw_data)
-
-        # Track
-        if "type" in raw_data and raw_data["type"] == "track" or "track" in raw_data:
-            return self._parse_track(raw_data)
-
-        # User
-        if "type" in raw_data and raw_data["type"] == "user":
-            return spotify.User(self, raw_data=raw_data)
-
-        # Artist
-        if "type" in raw_data and raw_data["type"] == "artist":
-            return spotify.Artist(self, raw_data=raw_data)
-
-        raise SpotifyToolsException(f"Parser didn't recognize object: {raw_data}")
-
-    def _parse_playlist(self, raw_data):
-        # Parse track data that may be included with the playlist data.
-        if children_data := raw_data["tracks"].pop("items", None):
-            children = [self.get_resource(track) for track in filter_false_tracks(children_data)]
-            children_loaded = not raw_data["tracks"]["next"]
-        else:
-            children = None
-            children_loaded = False
-        # Create the playlist.
-        return spotify.Playlist(self, raw_data=raw_data, children=children, children_loaded=children_loaded)
-
-    def _parse_album(self, raw_data):
-        # Parse artist data.
-        artists = [self.get_resource(artist) for artist in raw_data['artists']]
-        # Create the album.
-        album = spotify.Album(self, raw_data=raw_data, artists=artists)
-        # Tracks in album data miss their 'album' key, so it has to be injected after the album is created.
-        if children_data := raw_data["tracks"].pop("items", None) if "tracks" in raw_data else None:
-            children = []
-            for child in filter_false_tracks(children_data):
-                # Restore the reference to the album if it's missing.
-                if 'album' not in child:
-                    child['album'] = {'uri': raw_data['uri']}
-                children.append(self.get_resource(child))
-            album.children = children
-            album.children_loaded = not raw_data["tracks"]["next"]
-        return album
-
-    def _parse_track(self, raw_data):
-        # Parse artist and album data.
-        artists = [self.get_resource(artist) for artist in raw_data['artists']]
-        album = self.get_resource(raw_data['album'])
-        # Create the track.
-        track = spotify.Track(self, raw_data=raw_data, artists=artists, album=album)
-        return track

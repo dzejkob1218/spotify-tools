@@ -13,12 +13,12 @@ class Playlist(spotify.Resource, spotify.Collection):
         'images': ('images', lambda data: sort_image_urls(data)),
     }
 
-    def __init__(self, sp, raw_data, children=None, children_loaded=False):
+    def __init__(self, sp, raw_data, owner, children=None, children_loaded=False):
         spotify.Resource.__init__(self, sp, raw_data)
         spotify.Collection.__init__(self, sp, children, children_loaded)
+        self.owner = owner
         #self.user_is_owner = self.owner == sp.fetch_user().uri
 
-        # TODO: Introduce an attribute for the owner user object
 
     def load(self, recursive=False):
         # TODO: This should be pushed up

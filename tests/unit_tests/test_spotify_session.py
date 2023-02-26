@@ -19,17 +19,6 @@ from classes import spotify
 from classes.spotify_session import SpotifySession
 from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
-# TODO: Once getting a random playlist is a feature, use it to test any possible input
-
-# Dictionaries of collection and track id's used for testing
-PLAYLISTS = {
-    "basic_test": "spotify:playlist:0qaWhFRLG86FcXqw47FDtQ",  # small, basic playlist, owned by me (dzejkob1218)
-    "edge_test": "411NWDp9tPPcPgt5afBf5x",
-    # long playlist, no set image, no description, includes podcasts (also by me)
-    "empty_test": "3kPfB9mIkckYOPNxDgie2Q",  # empty playlist
-    "running": "37i9dQZF1DWZUTt0fNaCPB",  # spotify's 'running to rock' playlist
-}
-
 
 class TestSpotifySession:
     """
@@ -45,14 +34,10 @@ class TestSpotifySession:
         sp.connection = Mock()
         sp.authorized = True
         yield sp
-        # sp.remove_cache()
 
     # def test_fetch_item_failure(self, sp):
     #    """Assert exceptions are handled."""
     #    # TODO: Right now providing an invalid uri causes a retry loop
-
-    # def test_authorize():
-    #    assert False
 
     def test_unique_playlist_name(self, sp):
         """Assert a duplicate name is appended with the smallest available index."""
@@ -73,11 +58,11 @@ class TestSpotifySession:
         sp.fetch_user = Mock(return_value=mock_user)
         sp.unique_playlist_name = Mock(return_value="Mock Playlist (2)")
         sp._add_to_playlist = Mock()
-        sp.get_resource = Mock()
+        sp.factory.get_resource = Mock()
         # Call
         sp.create_playlist("Mock Playlist", [Mock() for i in range(201)])
         # Assertions
-        assert sp.connection.method_calls == [call.user_playlist_create("Mock User", "Mock Playlist (2)")]
+        assert sp.connection.method_calls == [call.user_playlist_create(mock_user.id, "Mock Playlist (2)")]
         assert sp._add_to_playlist.call_count == 3  # 3 requests limited to 100 for a list of 201 tracks.
 
     def test__add_to_playlist(self, sp):
@@ -94,44 +79,52 @@ class TestSpotifySession:
     def test__add_to_playlist_exception(self, sp):
         """Assert passing more than 100 tracks raises an exception."""
         with pytest.raises(SpotifyToolsException):
-            sp._add_to_playlist('Mock URI', [None for i in range(101)])
+            sp._add_to_playlist(Mock(), [Mock() for i in range(101)])
 
     def test_fetch_user_playlists(self, sp):
         """Assert that the function makes requests until the downloaded resources are complete and parses them."""
         # Setup
-        sp.connection.user_playlists = Mock(side_effect=[{'next': True, 'items': ['Mock Item']}, {'next': False}])
-        sp.get_resource = Mock(return_value='Parsed Item')
+        raw_item = Mock()
+        parsed_item = Mock()
+        sp.connection.user_playlists = Mock(side_effect=[{'next': True, 'items': [raw_item]}, {'next': False}])
+        sp.factory.get_resource = Mock(return_value=parsed_item)
         # Call and Assertions
-        assert sp.fetch_user_playlists(Mock(id='1')) == ['Parsed Item']
+        assert sp.fetch_user_playlists(Mock(id='1')) == [parsed_item]
         assert len(sp.connection.user_playlists.mock_calls) == 2
-        sp.get_resource.assert_called_once_with('Mock Item')
+        sp.factory.get_resource.assert_called_once_with(raw_item)
 
     def test_fetch_user(self, sp):
         """Assert the function caches the result and only updates when specified."""
         # Setup
-        sp.connection.current_user = Mock(side_effect='Current User')
-        sp.get_resource = Mock(side_effect=['Parsed User', 'Parsed Updated User'])
+        parsed_user = Mock()
+        parsed_updated_user = Mock()
+        sp.connection.current_user = Mock()
+        sp.factory.get_resource = Mock(side_effect=[parsed_user, parsed_updated_user])
 
         # Calls and Assertions
-        assert sp.fetch_user() == 'Parsed User'
-        assert sp.fetch_user() == 'Parsed User'  # call a second time to test caching
-        assert sp.connected_user == 'Parsed User'
+        assert sp.fetch_user() == parsed_user
+        assert sp.fetch_user() == parsed_user  # call a second time to test caching
+        assert sp.connected_user == parsed_user
         assert len(sp.connection.current_user.mock_calls) == 1
 
-        assert sp.fetch_user(update=True) == 'Parsed Updated User'
-        assert sp.connected_user == 'Parsed Updated User'
+        assert sp.fetch_user(update=True) == parsed_updated_user
+        assert sp.connected_user == parsed_updated_user
         assert len(sp.connection.current_user.mock_calls) == 2
-
-        # Cleanup
-        # TODO: Test if this is needed
-        sp.connected_user = None
 
     def test_fetch_user_unauthorized(self):
         """Test the @authorized decorator by attempting to get the user of an unauthorized session."""
-        # TODO: Waiting for authorization functionality to be fully implemented
+        load_dotenv()
         sp = SpotifySession("")
         with pytest.raises(SpotifyToolsUnauthorizedException):
             sp.fetch_user()
+
+    def test_search(self, sp):
+        parsed_resource = Mock()
+        sp.connection.search = Mock(return_value={'resource': {'items': [Mock()]}})
+        sp.factory.get_resource = Mock(return_value=parsed_resource)
+        result = sp.search(query='test', limit=10, tracks=True, artists=True, albums=False, playlists=True)
+        assert call(q='test', limit=10, type='track,artist,playlist') in sp.connection.search.mock_calls
+        assert parsed_resource in result['resource']
 
     @pytest.fixture()
     def load_bulk_setup(self, sp):
@@ -139,7 +132,7 @@ class TestSpotifySession:
         mock_tracks = [spotify.Track(sp, {'uri': f'Mock Track {i}'}, None, None) for i in range(51)]
         mock_albums = [spotify.Album(sp, {'uri': f"Mock Album {i}", 'name': f"Mock Album {i}"}, None) for i in range(2)]
         mock_artist = spotify.Artist(sp, {'uri': "Mock Artist", 'name': "Mock Artist"})
-        mock_playlist = spotify.Playlist(sp, {'uri': f"Mock Playlist", 'name': f"Mock Playlist"})
+        mock_playlist = spotify.Playlist(sp, {'uri': f"Mock Playlist", 'name': f"Mock Playlist"}, None)
         mock_items = mock_tracks + [mock_playlist, mock_artist] + mock_albums
         sp._fetch_bulk_details = Mock()
         sp._fetch_bulk_children = Mock()
@@ -152,7 +145,7 @@ class TestSpotifySession:
         for p in list(itertools.product(*(parameters,) * 3)):
             sp.load_bulk(mock_items, *p)
             # Assert each method is called once for each type of resource if requested.
-            assert sp._fetch_bulk_details.call_count == (2 if p[0] else 0) + (1 if p[1] else 0)
+            assert sp._fetch_bulk_details.call_count == (4 if p[0] else 0) + (1 if p[1] else 0)
             assert sp._fetch_bulk_children.call_count == (3 if p[2] else 0)
             sp._fetch_bulk_details.reset_mock()
             sp._fetch_bulk_children.reset_mock()
@@ -170,9 +163,10 @@ class TestSpotifySession:
 
     def test_load_children(self, sp):
         # Setup
-        mock_album = spotify.Album(sp, {'uri': "Mock Artist", 'name': "Mock Artist"}, artists=Mock())
+        mock_user = spotify.User(sp, {'uri': "Mock User", 'display_name': "Mock User"})
         mock_artist = spotify.Artist(sp, {'uri': "Mock Artist", 'name': "Mock Artist"})
-        mock_playlist = spotify.Playlist(sp, {'uri': "Mock Playlist", 'name': "Mock Playlist"})
+        mock_album = spotify.Album(sp, {'uri': "Mock Artist", 'name': "Mock Artist"}, artists=[mock_artist])
+        mock_playlist = spotify.Playlist(sp, {'uri': "Mock Playlist", 'name': "Mock Playlist"}, owner=mock_user)
         sp._fetch_bulk_children = Mock()
         # Call
         sp.load_children([mock_album, mock_artist, mock_playlist])
@@ -228,115 +222,7 @@ class TestSpotifySession:
         assert request_method.mock_calls == [call(mock_item, offset=3), call(mock_item, offset=8)]
         parsing_method.assert_called_once_with(mock_item, [mock_children, ] * 2)
 
-    def test_get_resource(self, sp):
-        # Setup
-        mock_data = {'uri': "Mock URI"}
-        sp._parse_resource = Mock()
-        # Call
-        sp.get_resource(mock_data)
-        # Assertion
-        assert sp._parse_resource.mock_calls == [call(mock_data)]
 
-    def test_get_resource_missing_data(self, sp):
-        # Setup
-        mock_data = {'uri': "Mock URI", 'missing': 'data', 'not missing': 'data'}
-        mock_resource = spotify.Resource(sp, raw_data={'uri': "Mock URI"})
-        mock_resource.missing_details = ['missing']
-        mock_resource.parse_details = Mock()
-        sp.resources = {"Mock URI": mock_resource}
-        # Call
-        sp.get_resource(mock_data)
-        assert mock_resource.parse_details.mock_calls == [call(mock_data)]
-
-    def test_get_resource_duplicate(self, sp):
-        # Setup
-        mock_data = {'uri': "Mock URI", 'not missing': 'data'}
-        mock_resource = spotify.Resource(sp, raw_data={'uri': "Mock URI"})
-        mock_resource.missing_details = ['missing']
-        mock_resource.parse_details = Mock()
-        sp._parse_resource = Mock()
-        sp.resources = {"Mock URI": mock_resource}
-        # Call
-        sp.get_resource(mock_data)
-        # Assertions
-        assert not mock_resource.parse_details.mock_calls
-        assert not sp._parse_resource.mock_calls
-
-    def test_get_resource_invalid(self, sp):
-        # Setup
-        mock_data = {'data': 'data'}
-        # Call and Exception
-        with pytest.raises(SpotifyToolsException):
-            sp.get_resource(mock_data)
-
-    @patch('classes.spotify_session.filter_false_tracks')
-    @patch('classes.spotify_session.spotify.Playlist')
-    def test__parse_playlist(self, mock_playlist, mock_filter_false_tracks, sp):
-        # Setup
-        mock_child_data = Mock()
-        mock_child = Mock()
-        mock_data = {
-            'type': 'playlist',
-            'tracks': {
-                'items': [Mock()],
-                'next': True
-            }
-        }
-        sp.get_resource = Mock(return_value=mock_child)
-        mock_filter_false_tracks.return_value = [mock_child_data]
-        # Call
-        sp._parse_resource(mock_data)
-        # Assertions
-        sp.get_resource.assert_called_once_with(mock_child_data)
-        assert mock_playlist.mock_calls[0] == call(sp, raw_data=mock_data, children=[mock_child], children_loaded=False)
-
-    @patch('classes.spotify_session.filter_false_tracks')
-    @patch('classes.spotify_session.spotify.Album')
-    def test__parse_album(self, mock_album, mock_filter_false_tracks, sp):
-        # Setup
-        mock_album_uri = Mock()
-        mock_artist_data = Mock()
-        mock_child_data = {}
-        mock_resource = Mock()
-        mock_data = {
-            'type': 'album',
-            'uri': mock_album_uri,
-            'artists': [mock_artist_data],
-            'tracks': {
-                'items': [Mock()],
-                'next': False
-            }
-        }
-        sp.get_resource = Mock(return_value=mock_resource)
-        mock_filter_false_tracks.return_value = [mock_child_data]
-        # Call
-        album = sp._parse_resource(mock_data)
-        # Assertions
-        assert call(mock_child_data) in sp.get_resource.mock_calls
-        assert call(mock_artist_data) in sp.get_resource.mock_calls
-        assert mock_album.mock_calls[0] == call(sp, raw_data=mock_data, artists=[mock_resource])
-        assert 'album' in mock_child_data and mock_child_data['album']['uri'] == mock_album_uri
-        assert mock_resource in album.children
-        assert album.children_loaded
-
-    @patch('classes.spotify_session.spotify.Track')
-    def test__parse_track(self, mock_track, sp):
-        # Setup
-        mock_artist_data = Mock()
-        mock_album_data = Mock()
-        mock_resource = Mock()
-        mock_data = {
-            'type': 'track',
-            'album': mock_album_data,
-            'artists': [mock_artist_data],
-        }
-        sp.get_resource = Mock(return_value=mock_resource)
-        # Call
-        sp._parse_resource(mock_data)
-        # Assertions
-        assert call(mock_artist_data) in sp.get_resource.mock_calls
-        assert call(mock_album_data) in sp.get_resource.mock_calls
-        assert mock_track.mock_calls[0] == call(sp, raw_data=mock_data, artists=[mock_resource], album=mock_resource)
 
 
 def test_timeout_wait(self, sp):

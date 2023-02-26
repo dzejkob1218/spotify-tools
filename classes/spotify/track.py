@@ -4,26 +4,19 @@ from helpers import parse_artists, sort_image_urls
 from classes.genius_session import GeniusSession
 
 
+# TODO: Add recommendation methods.
 class Track(spotify.Resource):
-    """
-    Additional methods:
-    - Recommended (track)
-    """
-    # Parent features that should be considered when averaging lists:
-    # Album - album, album_type, release_date, release_date_precision, genres (?), copyrights
-    # Artist - artist, genres,
-
     # TODO: This could later be merged into details
     feature_names = ['valence', 'energy', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'tempo', 'key', 'mode',
                      'signature']
     feature_aliases = {
-            'dance': 'danceability',
-            'speech': 'speechiness',
-            'acoustic': 'acousticness',
-            'instrumental': 'instrumentalness',
-            'live': 'liveness',
-            'signature': 'time_signature',
-        }
+        'dance': 'danceability',
+        'speech': 'speechiness',
+        'acoustic': 'acousticness',
+        'instrumental': 'instrumentalness',
+        'live': 'liveness',
+        'signature': 'time_signature',
+    }
     detail_names = ['uri', 'url', 'name', 'popularity', 'explicit', 'duration', 'track_number']
     detail_procedures = {
         'url': ('external_urls', lambda data: data['spotify']),
@@ -31,13 +24,11 @@ class Track(spotify.Resource):
     }
 
     def __init__(self, sp, raw_data, artists, album):
-
         self.artists = artists
         self.album = album
-
         super().__init__(sp, raw_data)
         self.lyrics = None
-        #self.language = helpers.quick_language(self) # Takes approx. half a second
+        # self.language = helpers.quick_language(self) # Takes approx. half a second
         self.confidence_scores = None
         self.sp = sp
         self.features = None
@@ -101,10 +92,8 @@ class Track(spotify.Resource):
         It is assumed the rest of the features responses are always complete.
         The default Spotify names for the features are unnecessarily long, so this function aliases them before copying.
         """
-
         self.features = {}
         if raw_data:
             for feature in self.feature_names:
                 key = self.feature_aliases[feature] if feature in self.feature_aliases else feature
                 self.features[feature] = raw_data[key]
-

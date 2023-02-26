@@ -1,31 +1,31 @@
 import classes.spotify as spotify
 
-"""
-Represents a Spotify resource that has a uri and can be retrieved from Spotify API
-"""
-
 
 class Resource(spotify.Object):
+    """Represents any Spotify resource that has a uri and can be retrieved from Spotify API."""
 
     # Details that need to be extracted from the Spotify data for the item to be considered completely loaded.
     detail_names = ['uri']
 
+    # TODO: Replace this with an adapter on data returned from spotify
     # Procedures for extracting specific details. Specified as a tuple of the detail's alias and a lambda function.
     detail_procedures = {}
 
     def __init__(self, sp, raw_data=None):
         self.attributes = {}  # Static attributes reflecting an existing spotify resource, added to __dict__
-        self.details_complete = False
-        self.parse_details(raw_data)
-        sp.resources[self.uri] = self  # Make an entry for self in the session cache.
-        # TODO: Replace details_complete with checking for missing_details
+        # TODO: Request complete details only if the required data is missing.
         self.missing_details = None
+        self.parse_details(raw_data)
+        #sp.resources[self.uri] = self  # Make an entry for self in the session cache.
+
+    def get_name(self):
+        return self.name
 
     def missing_detail_keys(self):
         """
         Returns missing attribute keys.
 
-        Note this returns the names that the missing data is stored under in Spotify responses, not the attribute names.
+        This returns the keys that are used in Spotify API responses, not the local aliases.
         """
         missing = [detail for detail in self.detail_names if detail not in self.attributes]
         return [self.detail_procedures[detail][0] if detail in self.detail_procedures else detail for detail in missing]
@@ -49,10 +49,10 @@ class Resource(spotify.Object):
                 self.attributes[detail] = value
             except KeyError:
                 pass
-        # Update the object with new attributes and check if the details are complete
+        # Update the object with new attributes and check if the details are complete.
         self.__dict__.update(self.attributes)
+        # Check which keys are missing.
         self.missing_details = self.missing_detail_keys()
         if 'uri' in self.missing_details:
             raise Exception("URI not provided to resource.")
-        self.details_complete = not self.missing_details
 

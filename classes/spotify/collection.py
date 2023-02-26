@@ -15,11 +15,10 @@ SUMMABLE_FEATURES = {'signature', 'tempo', 'valence', 'dance', 'speech', 'acoust
 
 
 class Collection(spotify.Object):
-    # Viable children types: All
     child_type = Resource
 
     def __init__(self, sp, children=None, children_loaded=False, name=None):
-        self.sp = sp
+        self.sp = sp  # TODO: Look into making resource ignorant of the session.
         self.name = name or self.name  # Replace name only if specified
         self.children: List[spotify.Object] = children or []
         self.filters: List[filters.Filter] = []
@@ -56,7 +55,6 @@ class Collection(spotify.Object):
 
     def gather_tracks(self):
         """Recursively return all tracks in this collection and all subcollections."""
-        # TODO: Use a set to remove duplicates
         # TODO: Different people may have different preferences on which version to keep (f.e. older vs newer release).
         # TODO: Add options for what's considered a duplicate e.g. live versions, remixes
         tracks = set()
@@ -76,7 +74,7 @@ class Collection(spotify.Object):
         all_tracks = self.gather_tracks()
 
         # Getting track features and details is much faster in bulk, it has to be done by the parent
-        incomplete_tracks = list(filter(lambda track: not track.details_complete, all_tracks))
+        incomplete_tracks = list(filter(lambda track: not track.missing_details, all_tracks))
         # TODO: Does it makes sense to merge features and details fetch methods? (one has a limit of 50, the other 100)
         if incomplete_tracks:
             self.sp.load_details(incomplete_tracks)
