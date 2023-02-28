@@ -1,6 +1,6 @@
 import spotifytools.spotify as spotify
-from spotifytools.spotify.track import Track
 from spotifytools.helpers import sort_image_urls
+from spotifytools.spotify.track import Track
 
 
 class Album(spotify.Resource, spotify.Collection):

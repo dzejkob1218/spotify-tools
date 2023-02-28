@@ -1,6 +1,6 @@
 import spotifytools.spotify as spotify
-import spotifytools.helpers
-from spotifytools.helpers import parse_artists, sort_image_urls
+
+from spotifytools.helpers import detect_language
 from spotifytools.genius_session import GeniusSession
 
 NO_LYRICS_PLACEHOLDER = 'No lyrics available.'
@@ -61,7 +61,7 @@ class Track(spotify.Resource):
         if self.lyrics == NO_LYRICS_PLACEHOLDER:
             return None
         if not self.language:
-            self.language = helpers.detect_language(self.lyrics)
+            self.language = detect_language(self.lyrics)
         return self.language
 
     def get_confidence_scores(self):

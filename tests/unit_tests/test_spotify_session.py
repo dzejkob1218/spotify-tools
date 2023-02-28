@@ -1,23 +1,13 @@
 import itertools
-import os
-import sys
 # Workaround to import classes properly
-import unittest.mock
-from unittest.mock import call
-import helpers
-from helpers import filter_false_tracks
-
-test_path = os.path.dirname(os.path.abspath(__file__))
-new_path = test_path.rsplit("/", 1)[0]
-sys.path.insert(0, new_path)
-
 import pytest
-from unittest.mock import Mock, MagicMock
-from unittest.mock import patch
+import unittest.mock
+from unittest.mock import Mock, MagicMock, call
 from dotenv import load_dotenv
-from classes import spotify
-from classes.spotify_session import SpotifySession
-from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
+
+from spotifytools import spotify
+from spotifytools.spotify_session import SpotifySession
+from spotifytools.exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
 
 class TestSpotifySession:

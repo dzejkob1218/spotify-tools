@@ -1,14 +1,14 @@
 import pytest
-from unittest.mock import Mock, MagicMock
-import unittest.mock
+from unittest.mock import Mock
 from unittest.mock import call
-from classes.resource_factory import ResourceFactory
-from classes import spotify
 from unittest.mock import patch
-from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
-
 from dotenv import load_dotenv
-from classes.spotify_session import SpotifySession
+
+from spotifytools import spotify
+from spotifytools.exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
+from spotifytools.resource_factory import ResourceFactory
+from spotifytools.spotify_session import SpotifySession
+
 
 class TestResourceFactory:
 
@@ -63,8 +63,8 @@ class TestResourceFactory:
             factory.get_resource(mock_data)
 
 
-    @patch('classes.resource_factory.filter_false_tracks')
-    @patch('classes.resource_factory.spotify.Playlist')
+    @patch('spotifytools.resource_factory.filter_false_tracks')
+    @patch('spotifytools.resource_factory.spotify.Playlist')
     def test__parse_playlist(self, mock_playlist, mock_filter_false_tracks, factory):
         # Setup
         mock_child_data = Mock()
@@ -88,8 +88,8 @@ class TestResourceFactory:
                                                    children_loaded=False)
 
 
-    @patch('classes.resource_factory.filter_false_tracks')
-    @patch('classes.resource_factory.spotify.Album')
+    @patch('spotifytools.resource_factory.filter_false_tracks')
+    @patch('spotifytools.resource_factory.spotify.Album')
     def test__parse_album(self, mock_album, mock_filter_false_tracks, factory):
         # Setup
         mock_album_uri = Mock()
@@ -117,7 +117,7 @@ class TestResourceFactory:
         assert mock_resource in album.children
         assert album.children_loaded
 
-    @patch('classes.resource_factory.spotify.Track')
+    @patch('spotifytools.resource_factory.spotify.Track')
     def test__parse_track(self, mock_track, factory):
         # Setup
         mock_artist_data = Mock()

@@ -2,16 +2,15 @@ import time
 from typing import List, Dict, Union
 
 import requests.exceptions
-import spotipy.exceptions
 from spotipy import Spotify
 import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
-import spotify as spotify
-import helpers
-from resource_factory import ResourceFactory
-from helpers import uri_to_url, filter_false_tracks, uri_list
-from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
+
+import spotifytools.spotify as spotify
+from spotifytools.resource_factory import ResourceFactory
+from spotifytools.helpers import uri_to_url, filter_false_tracks, uri_list, remove_duplicates
+from spotifytools.exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
 """
 Responsible for connecting and exchanging data with spotify
@@ -190,16 +189,16 @@ class SpotifySession:
         return response if raw else self.factory.get_resource(response)
 
     @timeout_wait
-    def fetch_artist_top_tracks(self, artist, remove_duplicates=True):
+    def fetch_artist_top_tracks(self, artist, keep_duplicates=False):
         """
         Returns artist's 10 top tracks.
         """
         response = self.connection.artist_top_tracks(artist.uri)
         tracks = [self.factory.get_resource(track) for track in response['tracks']]
         # TODO: This shouldn't be here
-        if remove_duplicates:
+        if not keep_duplicates:
             # Remove duplicates (tracks are sorted by popularity by default)
-            tracks = helpers.remove_duplicates(tracks)
+            tracks = remove_duplicates(tracks)
         return tracks
 
     @timeout_wait

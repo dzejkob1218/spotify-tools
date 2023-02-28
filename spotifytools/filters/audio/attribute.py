@@ -1,7 +1,4 @@
-from typing import List
-import classes.spotify as spotify
-
-from classes.filters.filter import Filter
+from spotifytools.filters.filter import Filter
 
 
 class Attribute(Filter):

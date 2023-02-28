@@ -1,8 +1,9 @@
 import spotifytools.spotify as spotify
+from spotifytools.spotify.playlist import Playlist
 
 
 class User(spotify.Resource, spotify.Collection):
-    child_type = spotify.Playlist
+    child_type = Playlist
     # TODO: Urls? Images?
     detail_names = ['uri', 'id', 'followers', 'name']
     detail_procedures = {

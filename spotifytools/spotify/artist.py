@@ -5,11 +5,9 @@ Additional methods:
 - Related
 
 """
-import time
-
+from spotifytools.helpers import sort_image_urls
 import spotifytools.spotify as spotify
 from spotifytools.spotify.album import Album
-from spotifytools.helpers import sort_image_urls
 
 
 class Artist(spotify.Resource, spotify.Collection):

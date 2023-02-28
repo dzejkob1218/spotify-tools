@@ -1,7 +1,8 @@
-from helpers import uniform_title
+from spotifytools.helpers import uniform_title
 from fuzzywuzzy import fuzz
 from lyricsgenius import Genius
 import os
+
 
 class GeniusSession:
     def __init__(self):

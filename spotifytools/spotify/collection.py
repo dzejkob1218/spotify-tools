@@ -1,9 +1,8 @@
-import time
 from typing import List
+from spotifytools.filters import Filter
 import spotifytools.spotify as spotify
-import spotifytools.filters as filters
-import spotifytools.helpers
 from spotifytools.spotify.resource import Resource
+
 
 """
 Any collection of Spotify resources
@@ -19,9 +18,9 @@ class Collection(spotify.Object):
 
     def __init__(self, sp, children=None, children_loaded=False, name=None):
         self.sp = sp  # TODO: Look into making resource ignorant of the session.
-        self.name = name or self.name  # Replace name only if specified
+        self.name = None#name or self.name  # Replace name only if specified
         self.children: List[spotify.Object] = children or []
-        self.filters: List[filters.Filter] = []
+        self.filters: List[Filter] = []
         self.statistics = {}  # All average values calculated for this collection so far
         self.children_loaded = children_loaded
         self.features = {}  # Average values of child features
@@ -39,6 +38,7 @@ class Collection(spotify.Object):
         return self.children
 
     def get_tracks(self):
+        return None
         """Recursively return all tracks in this collection and all subcollections."""
         # TODO: Different people may have different preferences on which version to keep (f.e. older vs newer release).
         # TODO: Add options for what's considered a duplicate e.g. live versions, remixes
@@ -46,7 +46,7 @@ class Collection(spotify.Object):
         for sub in self.get_children():
             if isinstance(sub, Collection):
                 tracks.update(sub.get_tracks())
-            elif isinstance(sub, spotify.Track):
+            elif isinstance(sub, Track):
                 tracks.add(sub)
         return list(tracks)
 

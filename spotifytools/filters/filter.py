@@ -1,5 +1,5 @@
 from typing import List
-import classes.spotify as spotify
+import spotifytools.spotify as spotify
 
 """
 A filter is applied to a collection to change the output of tracks

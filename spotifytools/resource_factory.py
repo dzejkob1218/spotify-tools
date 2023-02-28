@@ -1,8 +1,8 @@
 from typing import Dict
 
-import spotify
-from exceptions import SpotifyToolsException
-from helpers import uri_to_url, filter_false_tracks, uri_list
+import spotifytools.spotify as spotify
+from spotifytools.exceptions import SpotifyToolsException
+from spotifytools.helpers import filter_false_tracks
 
 
 class ResourceFactory:

@@ -3,12 +3,20 @@ import webbrowser
 from dotenv import load_dotenv
 from typing import Dict, List
 
-import spotify
-from discovery.discover import Discover
-from spotify_session import SpotifySession
-from genius_session import GeniusSession
+import spotifytools.spotify as spotify
+from spotifytools.discovery.discover import Discover
+from spotifytools.spotify_session import SpotifySession
+from spotifytools.genius_session import GeniusSession
 
 import time
+
+res = spotify.Resource(None, {'uri':''})
+track = spotify.Track(None, {'uri':''}, None, None)
+
+col = spotify.Collection(None)
+artist = spotify.Artist(None, {'uri':''}, None)
+al = spotify.Album(None, {'uri':''}, None)
+play = spotify.Playlist(None, {'uri':''}, None, None)
 
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
@@ -576,11 +584,16 @@ all_tracks = helpers.remove_duplicates(all_tracks)
 for track in all_tracks:
     print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
     """
-disc = Discover(sp)
-p = sp.fetch_item('spotify:playlist:21FHmpHObzFZfLlOc8Gxyv')
-disc.extend(p, 2000)
 
-exit()
+
+
+
+test = 'spotify:playlist:0hIYWWqNo6B7zHa0PhTTr6'
+
+#d = Discover(sp)
+
+p = sp.fetch_item(test)
+
 TEMP_time_measure = time.time()
 
 if __name__ == "__main__":
