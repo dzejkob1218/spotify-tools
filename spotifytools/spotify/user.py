@@ -1,4 +1,4 @@
-import classes.spotify as spotify
+import spotifytools.spotify as spotify
 
 
 class User(spotify.Resource, spotify.Collection):

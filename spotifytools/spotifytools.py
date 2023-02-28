@@ -1,19 +1,15 @@
 import helpers
-import typing
-from typing import Any
 import webbrowser
-import tracemalloc
 from dotenv import load_dotenv
 from typing import Dict, List
-from langcodes import Language
 
-# Test main file that will not be present in the library
-import classes.spotify as spotify
-from classes.discovery.discover import Discover
-from classes.spotify_session import SpotifySession
-from classes.genius_session import GeniusSession
+import spotify
+from discovery.discover import Discover
+from spotify_session import SpotifySession
+from genius_session import GeniusSession
 
 import time
+
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
 
@@ -580,7 +576,11 @@ all_tracks = helpers.remove_duplicates(all_tracks)
 for track in all_tracks:
     print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
     """
+disc = Discover(sp)
+p = sp.fetch_item('spotify:playlist:21FHmpHObzFZfLlOc8Gxyv')
+disc.extend(p, 2000)
 
+exit()
 TEMP_time_measure = time.time()
 
 if __name__ == "__main__":

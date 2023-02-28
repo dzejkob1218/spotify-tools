@@ -1,8 +1,9 @@
-import classes.spotify as spotify
-import helpers
-from helpers import parse_artists, sort_image_urls
-from classes.genius_session import GeniusSession
+import spotifytools.spotify as spotify
+import spotifytools.helpers
+from spotifytools.helpers import parse_artists, sort_image_urls
+from spotifytools.genius_session import GeniusSession
 
+NO_LYRICS_PLACEHOLDER = 'No lyrics available.'
 
 # TODO: Add recommendation methods.
 class Track(spotify.Resource):
@@ -34,10 +35,7 @@ class Track(spotify.Resource):
         self.features = None
 
     def load(self, recursive=False):
-        """
-        Downloads all available data about the track.
-
-        """
+        """Downloads all available data about the track."""
         if not recursive:
             self.get_features()
         self.get_confidence_scores()
@@ -47,7 +45,6 @@ class Track(spotify.Resource):
     # TODO: Add method for completing own details
 
     def get_features(self):
-        # TODO: Measure performance cost of loading features with track by default
         """Add audio features to track attributes."""
         if not self.features:
             self.sp.load_features(self)
@@ -61,7 +58,7 @@ class Track(spotify.Resource):
     def get_language(self):
         # TODO: export no lyrics text to a single variable
         self.get_lyrics()
-        if self.lyrics == 'No lyrics available.':
+        if self.lyrics == NO_LYRICS_PLACEHOLDER:
             return None
         if not self.language:
             self.language = helpers.detect_language(self.lyrics)
@@ -74,6 +71,7 @@ class Track(spotify.Resource):
         Spotify isn't perfect at guessing some features of a song and only commonly used keys and time signatures are recognized, so some attributes comes with a confidence rating.
         The analysis endpoint is slow and accepts only one track per request.
         """
+        # TODO: This should be in SpotifySession
         if not self.confidence_scores:
             raw_data = self.sp.connection.audio_analysis(self.uri)['track']
             self.confidence_scores = {
@@ -84,6 +82,8 @@ class Track(spotify.Resource):
             }
         return self.confidence_scores
 
+
+    # TODO: Merge features and details
     def parse_features(self, raw_data):
         """
         Updates features from a Spotify API response.
@@ -97,3 +97,4 @@ class Track(spotify.Resource):
             for feature in self.feature_names:
                 key = self.feature_aliases[feature] if feature in self.feature_aliases else feature
                 self.features[feature] = raw_data[key]
+

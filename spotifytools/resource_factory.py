@@ -1,6 +1,6 @@
 from typing import Dict
 
-from classes import spotify
+import spotify
 from exceptions import SpotifyToolsException
 from helpers import uri_to_url, filter_false_tracks, uri_list
 

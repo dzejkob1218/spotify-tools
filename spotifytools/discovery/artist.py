@@ -1,7 +1,7 @@
 import time
-import classes.spotify as spotify
-import helpers
-from classes.spotify_session import SpotifySession
+import spotifytools.spotify as spotify
+import spotifytools.helpers
+from spotifytools.spotify_session import SpotifySession
 from .source import Source
 from typing import List
 
@@ -39,8 +39,10 @@ class Artist(Source):
         # If quick mode was off or more tracks are contributed than are available in top tracks, load everything.
         # This is the bit that takes the most time, but there is no way around it.
         # TODO: Some ways to decrease time would be to not load popularity and keep a random order or prioritise using albums that are already present in the collection
-        unique_tracks = self.resource.get_complete_tracks(remove_duplicates=True)
+        all_tracks = self.resource.get_tracks()
 
+        # TODO: The removal of duplicates functionality here has been lost
+        unique_tracks = self.resource.sp.load_details(all_tracks)
         # Remember the original length to calculate exploitation.
         self.total_tracks = len(unique_tracks)
 

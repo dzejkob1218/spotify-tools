@@ -3,7 +3,6 @@ from fuzzywuzzy import fuzz
 from lyricsgenius import Genius
 import os
 
-
 class GeniusSession:
     def __init__(self):
         self.connection = Genius(os.environ.get("GENIUS_SECRET"))

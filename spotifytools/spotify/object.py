@@ -6,3 +6,4 @@ class Object:
 
     def load(self, recursive=False):
         """Download all data about the object and its children."""
+        return None

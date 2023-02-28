@@ -19,8 +19,6 @@ from classes.spotify_session import SpotifySession
 from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
 
-# TODO: Once getting a random playlist is a feature, use it to test any possible input
-
 class TestSpotifySession:
 
     @pytest.fixture
@@ -34,12 +32,12 @@ class TestSpotifySession:
         """
         Get content from the featured playlists endpoint to provide data for testing.
 
-        This content will vary between locations and users.
+        This content will vary for different times, locations and users.
         """
         content = {}
         raw_content = sp.connection.featured_playlists()
         content['playlists'] = [sp.factory.get_resource(item) for item in raw_content['playlists']['items']]
-        content['tracks'] = content['playlists'][0].gather_tracks()
+        content['tracks'] = content['playlists'][0].get_tracks()
         content['artists'] = list(set(itertools.chain(*[item.artists for item in content['tracks']])))
         content['albums'] = list(set([item.album for item in content['tracks']]))
         yield content

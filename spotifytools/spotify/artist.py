@@ -7,9 +7,9 @@ Additional methods:
 """
 import time
 
-import classes.spotify as spotify
-from classes.spotify.album import Album
-from helpers import sort_image_urls
+import spotifytools.spotify as spotify
+from spotifytools.spotify.album import Album
+from spotifytools.helpers import sort_image_urls
 
 
 class Artist(spotify.Resource, spotify.Collection):
@@ -25,21 +25,14 @@ class Artist(spotify.Resource, spotify.Collection):
         spotify.Resource.__init__(self, sp, raw_data)
         spotify.Collection.__init__(self, sp, children)
 
-    def gather_tracks(self):
+    def get_tracks(self):
         """
         Recursively return all tracks in this collection and all subcollections belonging to this artist.
 
-        It is possible not all tracks in a child album belong to the artist, f.e. in a compilation album.
+        Overrides the Collection implementation to only return tracks that belong to the artist (for compilation albums)
         """
-        tracks = super().gather_tracks()
+        tracks = super().get_tracks()
         return [track for track in tracks if self in track.artists]
-
-    def get_complete_children(self):
-        children = self.get_children()
-        incomplete_albums = list(filter(lambda album: not album.missing_details, children))
-        if incomplete_albums:
-            self.sp.load_details(incomplete_albums)
-        return children
 
     def get_top_tracks(self, remove_duplicates=False):
         """Downloads and returns top 10 tracks for this artist."""

@@ -1,8 +1,8 @@
 import random
 import time
-import classes.spotify as spotify
-import helpers
-from classes.spotify_session import SpotifySession
+import spotifytools.spotify as spotify
+import spotifytools.helpers
+from spotifytools.spotify_session import SpotifySession
 from .album import Album
 from .artist import Artist
 
@@ -24,8 +24,8 @@ class Discover:
         # TODO: Would it be better to make these dicts for faster indexing?
         artists = []
         albums = []
-        # TODO: Duplicates have to be removed from the source at some point, for now it's at the start for simplicity.
-        source_tracks = source.get_complete_tracks(remove_duplicates=True)
+        # TODO: Removing duplicates that used to happen here has been lost
+        source_tracks = self.sp.load_details(source.get_tracks())
         # Count occurrences of each artist and album in source collection.
         for track in source_tracks:
             album_source = next((x for x in albums if x == track.album), None)

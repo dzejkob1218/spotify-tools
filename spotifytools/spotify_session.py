@@ -7,9 +7,9 @@ from spotipy import Spotify
 import os
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 from spotipy.cache_handler import CacheFileHandler
-import classes.spotify as spotify
+import spotify as spotify
 import helpers
-from classes.resource_factory import ResourceFactory
+from resource_factory import ResourceFactory
 from helpers import uri_to_url, filter_false_tracks, uri_list
 from exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
@@ -30,6 +30,7 @@ TIMEOUT_SLEEP = 30
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
 
+
 # TODO: Consider creating an auhorized session class as a child of the general session
 def timeout_wait(func):
     """If the decorated function returns a timeout exception, wait and try again."""
@@ -49,10 +50,12 @@ def timeout_wait(func):
 
 def authorized(func):
     """Raises a dedicated exception if the session is unauthorized when decorated method is called."""
+
     def inner(self, *args, **kwargs):
         if not self.authorized:
             raise SpotifyToolsUnauthorizedException()
         return func(self, *args, **kwargs)
+
     return inner
 
 
@@ -75,7 +78,7 @@ class SpotifySession:
         auth_manager.get_access_token(code)
         self.connection = Spotify(auth_manager=auth_manager)
         # TODO: Check if timeouts can be handled by spotipy
-        #self.connection.requests_timeout = 30
+        # self.connection.requests_timeout = 30
         self.authorized = True
 
     # AUTHORIZED SCOPE
@@ -206,16 +209,16 @@ class SpotifySession:
 
     # Shorthands
     def load_children(self, items):
-        return self.load_bulk(items, children=True)
+        return self.load(items, children=True)
 
     def load_features(self, items):
-        return self.load_bulk(items, features=True)
+        return self.load(items, features=True)
 
     def load_details(self, items):
-        return self.load_bulk(items, details=True)
+        return self.load(items, details=True)
 
     # TODO: Add a decorator for making single item arguments into a list
-    def load_bulk(self, items: List[spotify.Resource], details=False, features=False, children=False):
+    def load(self, items: List[spotify.Resource], details=False, features=False, children=False):
         """
         Downloads and updates details and features for a list of resources.
 
@@ -227,7 +230,6 @@ class SpotifySession:
         # TODO: Make this more elegant
         if not isinstance(items, list):
             items = [items]
-
 
         # TODO: Add cases for all types
         # TODO: Add logic for recursive loading
@@ -262,10 +264,12 @@ class SpotifySession:
                 sorted_items[type(item)] = []
             sorted_items[type(item)].append(item)
 
+        # TODO: Add logic that separates items into lists based on their missing features (f.e. only load children if children are missing) so other parts of the program don't have to do checks
+
         # For each sorted list that is left, download and parse details or features.
         for c in cases:
             case = cases[c]
-            if not case:
+            if not case:  # Only proceed if the corresponding parameter is true.
                 continue
             for resource in case:
                 if resource in sorted_items:

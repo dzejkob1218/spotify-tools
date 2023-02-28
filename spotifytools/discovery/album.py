@@ -1,7 +1,7 @@
 import time
-import classes.spotify as spotify
-import helpers
-from classes.spotify_session import SpotifySession
+import spotifytools.spotify as spotify
+import spotifytools.helpers
+from spotifytools.spotify_session import SpotifySession
 from .source import Source
 
 
@@ -34,5 +34,5 @@ class Album(Source):
             # In quick mode estimate number of tracks from metadata.
             self.total_tracks = self.resource.count_tracks()
         else:
-            self.total_tracks = len(self.resource.get_complete_tracks(remove_duplicates=True))
+            self.total_tracks = len(self.resource.get_tracks())
 

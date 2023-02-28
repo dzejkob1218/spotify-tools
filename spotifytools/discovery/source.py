@@ -1,7 +1,7 @@
 import time
-import classes.spotify as spotify
-import helpers
-from classes.spotify_session import SpotifySession
+import spotifytools.spotify as spotify
+import spotifytools.helpers
+from spotifytools.spotify_session import SpotifySession
 
 
 class Source:

@@ -1,4 +1,3 @@
-
 from langdetect.lang_detect_exception import LangDetectException
 
 from typing import List

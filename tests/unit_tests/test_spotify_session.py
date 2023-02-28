@@ -143,7 +143,7 @@ class TestSpotifySession:
         parameters = (True, False)
         # Call the method with each possible combination of bool parameters.
         for p in list(itertools.product(*(parameters,) * 3)):
-            sp.load_bulk(mock_items, *p)
+            sp.load(mock_items, *p)
             # Assert each method is called once for each type of resource if requested.
             assert sp._fetch_bulk_details.call_count == (4 if p[0] else 0) + (1 if p[1] else 0)
             assert sp._fetch_bulk_children.call_count == (3 if p[2] else 0)
@@ -155,8 +155,8 @@ class TestSpotifySession:
         # Setup
         sp, mock_items = load_bulk_setup
         # Calls
-        sp.load_bulk([], details=True, features=True, children=True)
-        sp.load_bulk(mock_items)
+        sp.load([], details=True, features=True, children=True)
+        sp.load(mock_items)
         # Assertions
         assert sp._fetch_bulk_details.call_count == 0
         assert sp._fetch_bulk_children.call_count == 0

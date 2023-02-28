@@ -1,4 +1,4 @@
-import classes.spotify as spotify
+import spotifytools.spotify as spotify
 
 
 class Resource(spotify.Object):
@@ -16,7 +16,6 @@ class Resource(spotify.Object):
         # TODO: Request complete details only if the required data is missing.
         self.missing_details = None
         self.parse_details(raw_data)
-        #sp.resources[self.uri] = self  # Make an entry for self in the session cache.
 
     def get_name(self):
         return self.name
