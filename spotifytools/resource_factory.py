@@ -2,39 +2,41 @@ from typing import Dict
 
 import spotifytools.spotify as spotify
 from spotifytools.exceptions import SpotifyToolsException
-from spotifytools.helpers import filter_false_tracks
+from spotifytools.helpers import filter_false_tracks, details_adapter
 
 
 class ResourceFactory:
 
     def __init__(self, sp):
         self.sp = sp
-        self._cache = {}
+        self.cache = {}
 
-    def get_resource(self, raw_data: Dict):
-        """Return an existing resource by uri or create a new one."""
-        if 'uri' not in raw_data:
-            raise SpotifyToolsException(f"No URI supplied for resource: {raw_data}.")
-        uri = raw_data['uri']
-        # Check if the resource exists and return it if does.
-        if uri in self._cache:
-            resource = self._cache[uri]
-            # Parse the new data if it contains some missing information. # TODO: test performance on this
-            # TODO isn't doing it this way more resource-intensive than just parsing the details each time?
-            if resource.missing_details and any(missing in raw_data for missing in resource.missing_details):
-                resource.parse_details(raw_data)
+    def get_resource(self, raw_data: Dict, refresh=False):
+        """
+        Return an existing resource or create a new one from Spotify API data.
+
+        This is the only way through which instances of Resource should be initialized or updated.
+        """
+        data = details_adapter(raw_data)
+
+        if 'uri' not in data:
+            raise SpotifyToolsException(f"No URI supplied for resource: {data}.")
+        uri = data['uri']
+
+        # Check if the resource exists and return it if it does.
+        if uri in self.cache:
+            resource = self.cache[uri]
+            # Parse the new data if it contains some missing information.
+            if new_details := {detail: data[detail] for detail in data if detail not in resource.details}:
+                resource.parse_details(new_details)
             return resource
         else:
-            # Create a new resource if it didn't exist.
-            resource = self._parse_resource(raw_data)
+            # Create a new resource if it doesn't exist.
+            resource = self._parse_resource(data)
             return resource
 
     def _parse_resource(self, raw_data: Dict):
-        """
-        Recognizes the resource type from the raw data and calls the correct constructor or method.
-
-        This should be the only way through which instances of Resource are initialized.
-        """
+        """Recognizes the resource type from the raw data and calls the correct constructor or method."""
         resource = None
         # TODO: Check for type in uri instead of keys in the data
         # Playlist
@@ -61,16 +63,16 @@ class ResourceFactory:
             raise SpotifyToolsException(f"Parser didn't recognize object: {raw_data}")
 
         # Cache and return
-        self._cache[resource.uri] = resource
+        self.cache[resource.uri] = resource
         return resource
 
     def _parse_playlist(self, raw_data):
         # Create the user.
-        owner = self.get_resource(raw_data["owner"])
+        owner = self.get_resource(raw_data["owner_data"])
         # Parse track data that may be included with the playlist data.
-        if children_data := raw_data["tracks"].pop("items", None):
-            children = [self.get_resource(track) for track in filter_false_tracks(children_data)]
-            children_loaded = not raw_data["tracks"]["next"]
+        if 'items' in raw_data['tracks_data']:
+            children = [self.get_resource(track) for track in filter_false_tracks(raw_data['tracks_data']['items'])]
+            children_loaded = not raw_data['tracks_data']["next"]
         else:
             children = None
             children_loaded = False
@@ -80,25 +82,26 @@ class ResourceFactory:
 
     def _parse_album(self, raw_data):
         # Parse artist data.
-        artists = [self.get_resource(artist) for artist in raw_data['artists']]
+        artists = [self.get_resource(artist) for artist in raw_data["artists_data"]]
         # Create the album.
         album = spotify.Album(self.sp, raw_data=raw_data, artists=artists)
         # Tracks in album data miss their 'album' key, so it has to be injected after the album is created.
-        if children_data := raw_data["tracks"].pop("items", None) if "tracks" in raw_data else None:
+        if 'tracks_data' in raw_data and 'items' in raw_data['tracks_data']:
             children = []
+            children_data = raw_data['tracks_data']['items']
             for child in filter_false_tracks(children_data):
                 # Restore the reference to the album if it's missing.
-                if 'album' not in child:
-                    child['album'] = {'uri': raw_data['uri']}
+                if 'album_data' not in child:
+                    child['album_data'] = {'uri': raw_data['uri']}
                 children.append(self.get_resource(child))
             album.children = children
-            album.children_loaded = not raw_data["tracks"]["next"]
+            album.children_loaded = not raw_data["tracks_data"]["next"]
         return album
 
     def _parse_track(self, raw_data):
         # Parse artist and album data.
-        artists = [self.get_resource(artist) for artist in raw_data['artists']]
-        album = self.get_resource(raw_data['album'])
+        artists = [self.get_resource(artist) for artist in raw_data["artists_data"]]
+        album = self.get_resource(raw_data["album_data"])
         # Create the track.
         track = spotify.Track(self.sp, raw_data=raw_data, artists=artists, album=album)
         return track

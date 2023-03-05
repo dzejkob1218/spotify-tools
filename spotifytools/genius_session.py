@@ -5,6 +5,8 @@ import os
 
 
 class GeniusSession:
+    NO_LYRICS_PLACEHOLDER = 'No lyrics available.'
+
     def __init__(self):
         self.connection = Genius(os.environ.get("GENIUS_SECRET"))
 
@@ -18,17 +20,17 @@ class GeniusSession:
         name = uniform_title(track.name)
 
         # TODO: If performance is poor for songs with multiple artists, try searching for each one separately
-        artists = track.artists.split(", ")
-        print(f"Searching for lyrics to {name} by {artists}")
-        page = self.connection.search_song(name, artists[0])
+        artists_string = ", ".join([artist.name for artist in track.artists])
+        print(f"Searching for lyrics to {name} by {artists_string}")
+        page = self.connection.search_song(name, track.artists[0].name)
         if not page:
-            return "No lyrics available."
+            return self.NO_LYRICS_PLACEHOLDER
 
         # Check if any of the listed artists and the track title more or less match the result.
         artist_match = any(
             [
                 (fuzz.ratio(page.artist.lower(), artist.lower()) > 70)
-                for artist in artists
+                for artist in [artist.name for artist in track.artists]
             ]
         )
         title_match = fuzz.partial_ratio(page.title.lower(), name.lower()) > 70
@@ -36,7 +38,7 @@ class GeniusSession:
         if title_match and artist_match:
             return cleanup_lyrics(page.lyrics)
         else:
-            return "No lyrics available."
+            return self.NO_LYRICS_PLACEHOLDER
 
 
 def cleanup_lyrics(text):

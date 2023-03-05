@@ -29,31 +29,33 @@ class TestResourceFactory:
         assert factory._parse_resource.mock_calls == [call(mock_data)]
 
     def test_get_resource_missing_data(self, factory):
+        """Assert a cached resource is updated with new data when available."""
         # Setup
-        mock_data = {'uri': "Mock URI", 'missing': 'data', 'not missing': 'data'}
-        mock_resource = spotify.Resource(factory, raw_data={'uri': "Mock URI"})
-        mock_resource.missing_details = ['missing']
-        mock_resource.parse_details = Mock()
-        factory._cache = {"Mock URI": mock_resource}
-        # Call
-        factory.get_resource(mock_data)
-        assert mock_resource.parse_details.mock_calls == [call(mock_data)]
-
-
-    def test_get_resource_duplicate(self, factory):
-        # Setup
-        mock_data = {'uri': "Mock URI", 'not missing': 'data'}
-        mock_resource = spotify.Resource(factory, raw_data={'uri': "Mock URI"})
-        mock_resource.missing_details = ['missing']
+        mock_uri = Mock()
+        mock_data = {'uri': mock_uri, 'missing': 'data', 'not missing': 'data'}
+        mock_resource = spotify.Resource(factory, raw_data={'uri': mock_uri, 'not missing': 'data'})
         mock_resource.parse_details = Mock()
         factory._parse_resource = Mock()
-        factory._cache = {"Mock URI": mock_resource}
+        factory.cache = {mock_uri: mock_resource}
+        # Call
+        factory.get_resource(mock_data)
+        assert mock_resource.parse_details.mock_calls == [call({'missing': 'data'})]
+        assert not factory._parse_resource.mock_calls
+
+    def test_get_resource_duplicate(self, factory):
+        """Assert a new resource is not created when an resource of the same URI is available in the cache."""
+        # Setup
+        mock_uri = Mock()
+        mock_data = {'uri': mock_uri, 'not missing': 'data'}
+        mock_resource = spotify.Resource(factory, raw_data={'uri': mock_uri, 'not missing': 'data'})
+        mock_resource.parse_details = Mock()
+        factory._parse_resource = Mock()
+        factory.cache = {mock_uri: mock_resource}
         # Call
         factory.get_resource(mock_data)
         # Assertions
         assert not mock_resource.parse_details.mock_calls
         assert not factory._parse_resource.mock_calls
-
 
     def test_get_resource_invalid(self, factory):
         # Setup
@@ -72,8 +74,8 @@ class TestResourceFactory:
         mock_resource = Mock()
         mock_data = {
             'type': 'playlist',
-            'owner': mock_owner_data,
-            'tracks': {
+            'owner_data': mock_owner_data,
+            'tracks_data': {
                 'items': [Mock()],
                 'next': True
             }
@@ -99,8 +101,8 @@ class TestResourceFactory:
         mock_data = {
             'type': 'album',
             'uri': mock_album_uri,
-            'artists': [mock_artist_data],
-            'tracks': {
+            'artists_data': [mock_artist_data],
+            'tracks_data': {
                 'items': [Mock()],
                 'next': False
             }
@@ -113,7 +115,7 @@ class TestResourceFactory:
         assert call(mock_child_data) in factory.get_resource.mock_calls
         assert call(mock_artist_data) in factory.get_resource.mock_calls
         assert mock_album.mock_calls[0] == call(factory.sp, raw_data=mock_data, artists=[mock_resource])
-        assert 'album' in mock_child_data and mock_child_data['album']['uri'] == mock_album_uri
+        assert 'album_data' in mock_child_data and mock_child_data['album_data']['uri'] == mock_album_uri
         assert mock_resource in album.children
         assert album.children_loaded
 
@@ -125,8 +127,8 @@ class TestResourceFactory:
         mock_resource = Mock()
         mock_data = {
             'type': 'track',
-            'album': mock_album_data,
-            'artists': [mock_artist_data],
+            'album_data': mock_album_data,
+            'artists_data': [mock_artist_data],
         }
         factory.get_resource = Mock(return_value=mock_resource)
         # Call

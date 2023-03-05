@@ -1,5 +1,5 @@
 import time
-from typing import List, Dict, Union
+from typing import List
 
 import requests.exceptions
 from spotipy import Spotify
@@ -9,7 +9,7 @@ from spotipy.cache_handler import CacheFileHandler
 
 import spotifytools.spotify as spotify
 from spotifytools.resource_factory import ResourceFactory
-from spotifytools.helpers import uri_to_url, filter_false_tracks, uri_list, remove_duplicates
+from spotifytools.helpers import uri_to_url, filter_false_tracks, uri_list, remove_duplicates, features_adapter
 from spotifytools.exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
 
 """
@@ -27,7 +27,7 @@ Local client - for downloading everything into dbs
 TIMEOUT_SLEEP = 30
 
 # The authorization scope for Spotify API needed to run this app
-SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
+SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public"
 
 
 # TODO: Consider creating an auhorized session class as a child of the general session
@@ -64,6 +64,7 @@ class SpotifySession:
         """ Initializes an unauthorized connection - only endpoints not accessing user info will work."""
         self.authorized = False
         self.cache_handler = CacheFileHandler(cache_path=cache_path)
+        self.auth_manager = SpotifyOAuth(scope=SCOPE, cache_handler=self.cache_handler, show_dialog=True)
         self.connection: Spotify = Spotify(auth_manager=SpotifyClientCredentials())
         self.factory = ResourceFactory(self)  # TODO: Experiment with shared factories for sessions.
         self.connected_user = None  # Cache for currently connected user's data.
@@ -73,9 +74,8 @@ class SpotifySession:
         os.remove(self.cache_handler.cache_path)
 
     def authorize(self, code=None):
-        auth_manager = SpotifyOAuth(scope=SCOPE, cache_handler=self.cache_handler, show_dialog=True)
-        auth_manager.get_access_token(code)
-        self.connection = Spotify(auth_manager=auth_manager)
+        self.auth_manager.get_access_token(code)
+        self.connection = Spotify(auth_manager=self.auth_manager)
         # TODO: Check if timeouts can be handled by spotipy
         # self.connection.requests_timeout = 30
         self.authorized = True
@@ -147,17 +147,17 @@ class SpotifySession:
 
     @authorized
     @timeout_wait
-    def queue(self, uris):
+    def queue(self, tracks):
         """Queue one or more tracks."""
         # TODO: Handling of invalid parameters on this and play
-        for uri in uri_list(uris):
-            self.connection.add_to_queue(uri)
+        for track in tracks:
+            self.connection.add_to_queue(track.uri)
 
     @authorized
     # Time sensitive functions don't get a timeout decorator
-    def play(self, uris):
+    def play(self, tracks):
         """Starts playback of one or more tracks."""
-        self.connection.start_playback(uris=uri_list(uris))
+        self.connection.start_playback(uris=[track.uri for track in tracks])
 
     @authorized
     def fetch_currently_playing(self):
@@ -172,21 +172,27 @@ class SpotifySession:
 
     # GENERAL SCOPE
     @timeout_wait
-    def search(self, query, limit=50, tracks=False, artists=False, playlists=False, albums=False):
-        search_types = [('track', tracks), ('artist', artists), ('playlist', playlists), ('album', albums)]
-        search_type = ",".join(k for k, v in search_types if v)
-        results = self.connection.search(q=query, limit=limit, type=search_type)
-        for resource in results:
-            results[resource] = [self.factory.get_resource(data) for data in results[resource]['items']]
+    def search(self, query, search_type='track,artist,playlist,album', limit=50):
+        """
+        Returns objects representing Spotify search results.
+
+        # TODO: Elaborate documentation
+        # TODO: Consider using types instead of strings for indexing results
+        """
+        results = {}
+        response = self.connection.search(q=query, limit=limit, type=search_type)
+        for resource in response:
+            results[resource[:-1]] = [self.factory.get_resource(data) for data in response[resource]['items']]
         return results
 
     @timeout_wait
-    def fetch_item(self, uri, raw=False):
-        # TODO: Make this check if the item is already present before requesting
-        # TODO: Right now providing an invalid uri causes a retry loop
-        url = uri_to_url(uri)
-        response = self.connection._get(url)
-        return response if raw else self.factory.get_resource(response)
+    def fetch_item(self, uri, reload=False, raw=False):
+        if uri not in self.factory.cache or reload or raw:
+            url = uri_to_url(uri)
+            response = self.connection._get(url)
+            return response if raw else self.factory.get_resource(response)
+        else:
+            return self.factory.cache[uri]
 
     @timeout_wait
     def fetch_artist_top_tracks(self, artist, keep_duplicates=False):
@@ -231,7 +237,7 @@ class SpotifySession:
             items = [items]
 
         # TODO: Add cases for all types
-        # TODO: Add logic for recursive loading
+        # TODO: Add logic for recursive loading (for example load playlist tracks and their features in one call)
         # Define request limit, methods for requesting and parsing respectively for each requested resource.
         cases = {
             'features': {
@@ -324,12 +330,11 @@ class SpotifySession:
     def _album_details(self, albums: List[spotify.Album]):
         return self.connection.albums([album.uri for album in albums])['albums']
 
-    @staticmethod
-    def _match_details(items: List[spotify.Resource], details):
+    def _match_details(self, items: List[spotify.Resource], details):
         """"""
         for i in range(len(items)):
             if details[i]:
-                items[i].parse_details(details[i])
+                self.factory.get_resource(details[i])
             else:
                 # TODO: Replace this with logging
                 # Another edge case that has never happened so far
@@ -337,10 +342,9 @@ class SpotifySession:
 
     @staticmethod
     def _match_features(tracks: List[spotify.Track], features):
-        """"""
-        # Unlike details, features are sometimes intentionally left blank.
+        """Adapt the features and pass them to each track for parsing."""
         for i in range(len(tracks)):
-            tracks[i].parse_features(features[i])
+            tracks[i].parse_features(features_adapter(features[i]))
 
     @timeout_wait
     def _playlist_tracks(self, playlist, offset):

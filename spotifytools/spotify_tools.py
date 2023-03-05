@@ -4,19 +4,8 @@ from dotenv import load_dotenv
 from typing import Dict, List
 
 import spotifytools.spotify as spotify
-from spotifytools.discovery.discover import Discover
 from spotifytools.spotify_session import SpotifySession
 from spotifytools.genius_session import GeniusSession
-
-import time
-
-res = spotify.Resource(None, {'uri':''})
-track = spotify.Track(None, {'uri':''}, None, None)
-
-col = spotify.Collection(None)
-artist = spotify.Artist(None, {'uri':''}, None)
-al = spotify.Album(None, {'uri':''}, None)
-play = spotify.Playlist(None, {'uri':''}, None, None)
 
 # The authorization scope for Spotify API needed to run this app
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private"
@@ -35,7 +24,6 @@ silent = False
 # TODO: Argument chaining to avoid unnecessary menus
 # TODO: Navigate lists by name
 
-TEMP_time_measure = None
 
 def update_navigation_stack(item):
     navigation_stack.append(item)
@@ -145,12 +133,7 @@ def navigate_list(items: List, start=0, number=None):
 
 # TODO: Separate presenting choices or taking input for a list and a menu
 def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
-    global command_queue, silent, TEMP_time_measure
-
-
-    # Print time of execution for the last command
-    total_time = time.time() - TEMP_time_measure
-    print(f"Command executed in {round(total_time,2)} ms")
+    global command_queue, silent
 
     # Update available actions with type-specific defaults
     actions = {}
@@ -173,15 +156,11 @@ def take_input(loaded_lists: Dict = None, unloaded_lists: Dict = None):
         print_choices(actions.keys())
     letterize_menu(actions, loaded_lists, unloaded_lists)
 
-
     # Take user input if none is queued
     while not command_queue:
         full_input = input()
         commands = full_input.lower().split()
         command_queue = commands
-
-    # Start measuring time
-    TEMP_time_measure = time.time()
 
     # Execute the selected action
     command = command_queue.pop(0)
@@ -307,7 +286,6 @@ def print_help():
             raise Exception(f"Option defined without a help text ({action}).")
         print_command_help(action, HELP_TEXT[action])
 
-    print("\nTip: Input anything to continue anytime you don't see navigation options.")
     input()
     if navigation_stack:
         navigate(navigation_stack.pop())
@@ -556,56 +534,6 @@ HELP_TEXT = {
     ],
 }
 
-#cp_uri = sp.fetch_currently_playing().uri
-#track = sp.fetch_item('spotify:track:0kquzTsZG4m9qmLJaPSY9U')
-
-"""
-print('\nTRACK')
-track = sp.fetch_raw_item('spotify:track:5lVpv4Fm2hKaofsTmFC0tQ')
-helpers.show_dict(track)
-print('\nALBUM')
-helpers.show_dict(track['album'])
-print('\nFULL ALBUM')
-album = sp.fetch_raw_item(track['album']['uri'])
-helpers.show_dict(album)
-for i in album:
-    if i not in track['album']:
-        print(i)
-print('\nARTIST')
-helpers.show_dict(track['artists'][0])
-print('\nFULL ARTIST')
-artist = sp.fetch_raw_item(track['artists'][0]['uri'])
-helpers.show_dict(artist)
-
-artist = track.artists[0]
-artist.get_features()
-all_tracks = sorted(artist.gather_tracks(), key=lambda track: track.popularity, reverse=True)
-all_tracks = helpers.remove_duplicates(all_tracks)
-for track in all_tracks:
-    print(f"{track.popularity:3} - {track.name} - {[artist.name for artist in track.artists]}")
-    """
-
-
-
-
-test = 'spotify:playlist:0hIYWWqNo6B7zHa0PhTTr6'
-
-#d = Discover(sp)
-
-p = sp.fetch_item(test)
-
-TEMP_time_measure = time.time()
-
 if __name__ == "__main__":
     navigate_home_menu()
 
-# uris for testing
-star = '0idBt8K93C3UMOwgNLpdHB'
-test = '0hIYWWqNo6B7zHa0PhTTr6'
-test2 = '7yhjfMkKsoVnJZVPd6VJF1'
-p = '6RA3mmWJG6wDrzZEcZIwnK'
-phantogram = 'spotify:artist:1l9d7B8W0IHy3LqWsxP2SH'
-doors = 'spotify:artist:22WZ7M8sxp5THdruNY3gXt'
-tcv = 'spotify:artist:4zYQWYmtimAEmI6WWEzGfO'
-dp = 'spotify:artist:568ZhdwyaiCyOGJRtNYhWf'
-dopethrone = 'spotify:album:2ntG8GB5e2RuOYkSmBo1ij'

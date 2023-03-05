@@ -5,6 +5,73 @@ import langdetect
 from langcodes import Language
 
 
+def details_adapter(details):
+    """
+    Processes resource data from Spotify API for easier processing.
+    """
+
+    # These entries contain data representing another Spotify resource.
+    related_resources = ['owner', 'artist', 'artists', 'tracks', 'album', 'albums']
+
+    # Alias and procedure to extract each parsed detail.
+    procedures = {
+        'external_urls': ('url', lambda data: data['spotify']),
+        'followers': ('followers', lambda data: data["total"]),
+        'tracks': ('total_tracks', lambda data: data["total"]),
+        'images': ('images', lambda data: sort_image_urls(data)),
+        'duration_ms': ('duration', None),
+        'display_name': ('name', None),
+    }
+    parsed_details = {}
+
+    for detail in details:
+        if detail in procedures:
+            new_name, procedure = procedures[detail]
+            parsed_details[new_name] = procedure(details[detail]) if procedure else details[detail]
+            if new_name == detail:
+                # If no alias was defined, continue to the next detail.
+                continue
+        if detail in related_resources:
+            # Append '_data' to the key so it doesn't conflict with the field containing the Resource object.
+            parsed_details[detail + '_data'] = details[detail]
+        else:
+            parsed_details[detail] = details[detail]
+
+    return parsed_details
+
+
+def features_adapter(features):
+    """
+    Processes track audio features from Spotify API for easier processing.
+
+    Shortens all features ending in '-ness' or '-ability'.
+    """
+
+    # Features are intentionally left black on some tracks.
+    if not features:
+        return features
+
+    feature_names = ['valence', 'energy', 'danceability', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'tempo', 'key', 'mode',
+                     'time_signature']
+
+    feature_aliases = {
+        'danceability': 'dance',
+        'speechiness': 'speech',
+        'acousticness': 'acoustic',
+        'instrumentalness': 'instrumental',
+        'liveness': 'live',
+        'time_signature': 'signature'
+    }
+
+    parsed_features = {}
+    for feature in feature_names:
+        key = feature_aliases[feature] if feature in feature_aliases else feature
+        if feature not in features:
+            pass
+        parsed_features[key] = features[feature]
+
+    return parsed_features
+
 def uri_list(uris):
     """
     Returns the parameter enclosed in a list if the parameter was a string.
@@ -87,15 +154,15 @@ def filter_false_tracks(items):
     """Filter out local tracks and items with no 'track' (they're usually podcast episodes)"""
     result = []
     for item in items:
-        # Check if the item contains a track.
-        if 'track' in item:
+        # Check if the item contains a track. Sometimes a response contains empty husks of items without a track inside.
+        if 'track' in item and item['track']:
             # Item is track context.
             track = item['track']
-        elif item['type'] == 'track':
+        elif 'type' in item and item['type'] == 'track':
             # Item is track.
             track = item
         else:
-            break
+            continue
         # Check if track is local.
         if not track['is_local'] and ':local:' not in track['uri']:
             result.append(track)

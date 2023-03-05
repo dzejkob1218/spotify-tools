@@ -1,23 +1,9 @@
-"""
-Additional methods:
-- Recommended (artist)
-- Recommended (genre)
-- Related
-
-"""
-from spotifytools.helpers import sort_image_urls
 import spotifytools.spotify as spotify
 from spotifytools.spotify.album import Album
 
 
 class Artist(spotify.Resource, spotify.Collection):
     child_type = Album
-    detail_names = ['uri', 'url', 'name', 'popularity', 'genres', 'followers', 'images']
-    detail_procedures = {
-        'url': ('external_urls', lambda data: data['spotify']),
-        'images': ('images', lambda data: sort_image_urls(data)),
-        'followers': ("followers", lambda data: data["total"]),
-    }
 
     def __init__(self, sp, raw_data, children=None):
         spotify.Resource.__init__(self, sp, raw_data)

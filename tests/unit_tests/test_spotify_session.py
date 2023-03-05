@@ -110,9 +110,9 @@ class TestSpotifySession:
 
     def test_search(self, sp):
         parsed_resource = Mock()
-        sp.connection.search = Mock(return_value={'resource': {'items': [Mock()]}})
+        sp.connection.search = Mock(return_value={'resources': {'items': [Mock()]}})
         sp.factory.get_resource = Mock(return_value=parsed_resource)
-        result = sp.search(query='test', limit=10, tracks=True, artists=True, albums=False, playlists=True)
+        result = sp.search(query='test', search_type='track,artist,playlist', limit=10)
         assert call(q='test', limit=10, type='track,artist,playlist') in sp.connection.search.mock_calls
         assert parsed_resource in result['resource']
 
@@ -153,7 +153,7 @@ class TestSpotifySession:
 
     def test_load_children(self, sp):
         # Setup
-        mock_user = spotify.User(sp, {'uri': "Mock User", 'display_name': "Mock User"})
+        mock_user = spotify.User(sp, {'uri': "Mock User", 'name': "Mock User"})
         mock_artist = spotify.Artist(sp, {'uri': "Mock Artist", 'name': "Mock Artist"})
         mock_album = spotify.Album(sp, {'uri': "Mock Artist", 'name': "Mock Artist"}, artists=[mock_artist])
         mock_playlist = spotify.Playlist(sp, {'uri': "Mock Playlist", 'name': "Mock Playlist"}, owner=mock_user)

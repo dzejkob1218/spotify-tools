@@ -4,26 +4,17 @@ import spotifytools.spotify as spotify
 from spotifytools.spotify.resource import Resource
 
 
-"""
-Any collection of Spotify resources
-"""
-# TODO: Reimplement following: 'release_year', 'artists_number'
-SUMMABLE_DETAILS = {'popularity', 'duration', 'track_number', 'explicit', 'mode'}
-SUMMABLE_FEATURES = {'signature', 'tempo', 'valence', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'energy',
-                     'mode'}
-
-
 class Collection(spotify.Object):
+    """Represents any collection of Spotify."""
     child_type = Resource
 
     def __init__(self, sp, children=None, children_loaded=False, name=None):
         self.sp = sp  # TODO: Look into making resource ignorant of the session.
-        self.name = None#name or self.name  # Replace name only if specified
+        self.name = name or self.name  # Replace name only if specified.
         self.children: List[spotify.Object] = children or []
         self.filters: List[Filter] = []
-        self.statistics = {}  # All average values calculated for this collection so far
         self.children_loaded = children_loaded
-        self.features = {}  # Average values of child features
+        self.features = {}  # Average values of child details.
 
     def __iter__(self):
         return iter(self.children)
@@ -38,7 +29,6 @@ class Collection(spotify.Object):
         return self.children
 
     def get_tracks(self):
-        return None
         """Recursively return all tracks in this collection and all subcollections."""
         # TODO: Different people may have different preferences on which version to keep (f.e. older vs newer release).
         # TODO: Add options for what's considered a duplicate e.g. live versions, remixes
@@ -46,7 +36,7 @@ class Collection(spotify.Object):
         for sub in self.get_children():
             if isinstance(sub, Collection):
                 tracks.update(sub.get_tracks())
-            elif isinstance(sub, Track):
+            elif isinstance(sub, spotify.Track):
                 tracks.add(sub)
         return list(tracks)
 
@@ -58,32 +48,31 @@ class Collection(spotify.Object):
             return sum(child.count_tracks() for child in self.get_children())
 
     # TODO: Merge details and features
-    def get_features(self):
+    def get_features(self, reload=False):
         # TODO: Add quantitive features; most popular artists, languages
         """
         Downloads and updates features for all children tracks and their average values.
 
         This will cause all subcollections to load.
         """
+        # TODO: Reimplement following: 'release_year', 'artists_number'
+        # Details that can be summed up and averaged.
+        summable = ['popularity', 'energy', 'dance', 'valence', 'duration', 'explicit', 'tempo', 'live', 'speech', 'acoustic', 'instrumental', 'mode', 'signature', 'track_number']
+
         if not self.features:
             # TODO: Add options for loading new tracks and forcing a refresh on all tracks
             # TODO: There is a difference between artist's tracks' average features and albums' average features
-            all_tracks = self.get_complete_tracks()
-            detail_sums = dict().fromkeys(SUMMABLE_DETAILS, 0)
-            feature_sums = dict().fromkeys(SUMMABLE_FEATURES, 0)
-            tracks_with_features = 0
-            for child in all_tracks:
-                # Every complete track has details.
-                for detail in detail_sums:
-                    detail_sums[detail] += child.attributes[detail]
-                # Not every track has features, but if it does they're always complete.
-                if child.features:
-                    tracks_with_features += 1
-                    for feature in feature_sums:
-                        feature_sums[feature] += child.features[feature]
-            for detail_sum in detail_sums:
-                self.features[detail_sum] = detail_sums[detail_sum] / len(all_tracks)
-            for feature_sum in feature_sums:
-                self.features[feature_sum] = feature_sums[feature_sum] / tracks_with_features
+            # Load complete tracks.
+            tracks = self.get_tracks()
+            self.sp.load(tracks, details=True, features=True)
+            # Initialize the dictionary to hold the sums of values and resources.
+            sums = {detail: {'sum': 0, 'count': 0} for detail in summable}
+            for child in tracks:
+                for detail in summable:
+                    if detail in child.details:
+                        sums[detail]['sum'] += child.details[detail]
+                        sums[detail]['count'] += 1
+            for detail in sums:
+                self.features[detail] = sums[detail]['sum']/sums[detail]['count']
         return self.features
 

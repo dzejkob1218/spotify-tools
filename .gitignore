@@ -7,3 +7,4 @@ __pycache__
 .spotify_caches
 feature_masterlist.py
 .pytest_cache
+spotifytools.egg-info

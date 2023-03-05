@@ -1,29 +1,11 @@
 import spotifytools.spotify as spotify
 
-from spotifytools.helpers import detect_language
+from spotifytools.helpers import detect_language, features_adapter
 from spotifytools.genius_session import GeniusSession
 
-NO_LYRICS_PLACEHOLDER = 'No lyrics available.'
 
 # TODO: Add recommendation methods.
 class Track(spotify.Resource):
-    # TODO: This could later be merged into details
-    feature_names = ['valence', 'energy', 'dance', 'speech', 'acoustic', 'instrumental', 'live', 'tempo', 'key', 'mode',
-                     'signature']
-    feature_aliases = {
-        'dance': 'danceability',
-        'speech': 'speechiness',
-        'acoustic': 'acousticness',
-        'instrumental': 'instrumentalness',
-        'live': 'liveness',
-        'signature': 'time_signature',
-    }
-    detail_names = ['uri', 'url', 'name', 'popularity', 'explicit', 'duration', 'track_number']
-    detail_procedures = {
-        'url': ('external_urls', lambda data: data['spotify']),
-        'duration': ('duration_ms', None),
-    }
-
     def __init__(self, sp, raw_data, artists, album):
         self.artists = artists
         self.album = album
@@ -32,7 +14,7 @@ class Track(spotify.Resource):
         # self.language = helpers.quick_language(self) # Takes approx. half a second
         self.confidence_scores = None
         self.sp = sp
-        self.features = None
+        self.features = None  # False denotes features not available
 
     def load(self, recursive=False):
         """Downloads all available data about the track."""
@@ -56,9 +38,8 @@ class Track(spotify.Resource):
         return self.lyrics
 
     def get_language(self):
-        # TODO: export no lyrics text to a single variable
         self.get_lyrics()
-        if self.lyrics == NO_LYRICS_PLACEHOLDER:
+        if self.lyrics == GeniusSession.NO_LYRICS_PLACEHOLDER:
             return None
         if not self.language:
             self.language = detect_language(self.lyrics)
@@ -82,19 +63,16 @@ class Track(spotify.Resource):
             }
         return self.confidence_scores
 
-
-    # TODO: Merge features and details
-    def parse_features(self, raw_data):
+    def parse_features(self, features):
         """
         Updates features from a Spotify API response.
 
-        Spotify doesn't have features on very short and unusual tracks, in that case the features remain an empty dict.
+        Spotify doesn't have features on very short and unusual tracks, in that case the features are set to False.
         It is assumed the rest of the features responses are always complete.
-        The default Spotify names for the features are unnecessarily long, so this function aliases them before copying.
+        Some default Spotify names for the features are aliased to be shorter.
         """
-        self.features = {}
-        if raw_data:
-            for feature in self.feature_names:
-                key = self.feature_aliases[feature] if feature in self.feature_aliases else feature
-                self.features[feature] = raw_data[key]
-
+        # TODO: Look into loading features through Resource parse_details route
+        self.features = bool(features)
+        if features:
+            self.details.update(features)
+            self.__dict__.update(features)
