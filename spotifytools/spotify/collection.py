@@ -42,8 +42,8 @@ class Collection(spotify.Object):
 
     def count_tracks(self):
         """Estimates the total number of tracks under this collection by summing up 'total_tracks' attribute."""
-        if 'total_tracks' in self.attributes:
-            return self.attributes['total_tracks']
+        if 'total_tracks' in self.details:
+            return self.details['total_tracks']
         else:
             return sum(child.count_tracks() for child in self.get_children())
 
