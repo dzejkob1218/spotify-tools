@@ -534,6 +534,7 @@ HELP_TEXT = {
     ],
 }
 
+
 if __name__ == "__main__":
     navigate_home_menu()
 

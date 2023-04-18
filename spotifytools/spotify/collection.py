@@ -14,6 +14,7 @@ class Collection(spotify.Object):
         self.children: List[spotify.Object] = children or []
         self.filters: List[Filter] = []
         self.children_loaded = children_loaded
+        # TODO: Make features work as they do in Track, where None is unloaded and False means unavailable.
         self.features = {}  # Average values of child details.
 
     def __iter__(self):
@@ -73,6 +74,7 @@ class Collection(spotify.Object):
                         sums[detail]['sum'] += child.details[detail]
                         sums[detail]['count'] += 1
             for detail in sums:
-                self.features[detail] = sums[detail]['sum']/sums[detail]['count']
+                if sums[detail]['count']:
+                    self.features[detail] = sums[detail]['sum']/sums[detail]['count']
         return self.features
 
