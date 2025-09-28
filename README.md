@@ -35,14 +35,3 @@ spotify_session = SpotifySession()
 spotify_session.authorize()
 spotify_session.fetch_currently_playing() 
 ```
-
-
-
-# CLI
-Running the module as main will launch the command-line interface which lets you navigate and manipulate Spotify resources.
-
--- example output --
-
-The CLI is not fully implemented yet and more features are coming soon.
-
-Type `help` or just `h` at any point to bring up help text describing available options.
