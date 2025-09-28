@@ -2,7 +2,7 @@ from typing import Dict
 
 import spotifytools.spotify as spotify
 from spotifytools.exceptions import SpotifyToolsException
-from spotifytools.helpers import filter_false_tracks, details_adapter
+from spotifytools.helpers import filter_false_tracks, adapt_details
 
 
 class ResourceFactory:
@@ -10,6 +10,13 @@ class ResourceFactory:
     def __init__(self, sp):
         self.sp = sp
         self.cache = {}
+        # TODO: Protect cache - add a method for checking what's in it
+
+    def search_cache(self, uri):
+        if uri in self.cache:
+            return self.cache[uri]
+        else:
+            return None
 
     def get_resource(self, raw_data: Dict, refresh=False):
         """
@@ -17,19 +24,19 @@ class ResourceFactory:
 
         This is the only way through which instances of Resource should be initialized or updated.
         """
-        data = details_adapter(raw_data)
+        data = adapt_details(raw_data)
 
         if 'uri' not in data:
             raise SpotifyToolsException(f"No URI supplied for resource: {data}.")
         uri = data['uri']
 
         # Check if the resource exists and return it if it does.
-        if uri in self.cache:
-            resource = self.cache[uri]
+        cached = self.search_cache(uri)
+        if cached:
             # Parse the new data if it contains some missing information.
-            if new_details := {detail: data[detail] for detail in data if detail not in resource.details}:
-                resource.parse_details(new_details)
-            return resource
+            if new_details := {detail: data[detail] for detail in data if detail not in cached.details}:
+                cached.parse_details(new_details)
+            return cached
         else:
             # Create a new resource if it doesn't exist.
             resource = self._parse_resource(data)
@@ -66,6 +73,7 @@ class ResourceFactory:
         self.cache[resource.uri] = resource
         return resource
 
+    # TODO: Methods for parsing specific types of data should live in their corresponding classes
     def _parse_playlist(self, raw_data):
         # Create the user.
         owner = self.get_resource(raw_data["owner_data"])
@@ -85,12 +93,14 @@ class ResourceFactory:
         artists = [self.get_resource(artist) for artist in raw_data["artists_data"]]
         # Create the album.
         album = spotify.Album(self.sp, raw_data=raw_data, artists=artists)
+        self.cache[raw_data['uri']] = album  # Add Album to the cache so the tracks can reference it when created.
         # Tracks in album data miss their 'album' key, so it has to be injected after the album is created.
         if 'tracks_data' in raw_data and 'items' in raw_data['tracks_data']:
             children = []
             children_data = raw_data['tracks_data']['items']
             for child in filter_false_tracks(children_data):
                 # Restore the reference to the album if it's missing.
+                # TODO: The Album resource is added to cache only after it finishes parsing, pass the Album instead of uri to children as they are being created and check for similar errors
                 if 'album_data' not in child:
                     child['album_data'] = {'uri': raw_data['uri']}
                 children.append(self.get_resource(child))

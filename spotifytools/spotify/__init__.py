@@ -1,3 +1,7 @@
+from spotifytools.spotify.image import Image
+from spotifytools.spotify.genius_features import GeniusFeatures
+from spotifytools.spotify.audio_features import AudioFeatures
+
 from spotifytools.spotify.object import Object
 
 from spotifytools.spotify.collection import Collection

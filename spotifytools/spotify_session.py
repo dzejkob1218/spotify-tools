@@ -9,8 +9,9 @@ from spotipy.cache_handler import CacheFileHandler
 
 import spotifytools.spotify as spotify
 from spotifytools.resource_factory import ResourceFactory
-from spotifytools.helpers import uri_to_url, filter_false_tracks, uri_list, remove_duplicates, features_adapter
+from spotifytools.helpers import uri_to_url, filter_false_tracks, uri_list, remove_duplicates, adapt_audio_features
 from spotifytools.exceptions import SpotifyToolsException, SpotifyToolsUnauthorizedException
+from spotifytools.genius_session import GeniusSession
 
 """
 Responsible for connecting and exchanging data with spotify
@@ -30,12 +31,16 @@ TIMEOUT_SLEEP = 30
 SCOPE = "user-top-read user-read-currently-playing user-modify-playback-state playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public"
 
 
-# TODO: Consider creating an auhorized session class as a child of the general session
+# TODO: Consider creating an authorized session class as a child of the general session
 def timeout_wait(func):
     """If the decorated function returns a timeout exception, wait and try again."""
 
     def inner(*args, **kwargs):
         while True:
+
+            # TODO: Temp disabled to investigate recent deprecations
+            return func(*args, **kwargs)
+
             try:
                 return func(*args, **kwargs)
             # TODO: SpotifyException doesn't always mean timeout
@@ -69,6 +74,7 @@ class SpotifySession:
         self.factory = ResourceFactory(self)  # TODO: Experiment with shared factories for sessions.
         self.connected_user = None  # Cache for currently connected user's data.
         self.resources = {}  # Master dictionary of all instantiated unique resources indexed by URI
+        self.genius_session = GeniusSession()
 
     def remove_cache(self):
         os.remove(self.cache_handler.cache_path)
@@ -82,11 +88,20 @@ class SpotifySession:
 
     # AUTHORIZED SCOPE
     @authorized
-    def unique_playlist_name(self, name):
-        """Modifies a playlist name to make it unique in the user's library."""
+    def unique_playlist_name(self, name: str) -> str:
+        # TODO: The logic to generate a unique name shouldn't live in a class at all
+        """
+        Appends number to a playlist name to make it unique within the scope of the user's library.
+
+        Args:
+            name: The original playlist name.
+
+        Returns:
+            The modified unique playlist name.
+        """
         all_names = [p.name for p in self.fetch_user_playlists(self.fetch_user())]
         if name in all_names:
-            i = 2  # Try adding numbers till a unique name is found starting with 2.
+            i = 2  # Try adding numbers until a unique name is found starting with 2.
             while name + f" ({i})" in all_names:
                 i += 1
             name += f" ({i})"
@@ -96,6 +111,7 @@ class SpotifySession:
     @timeout_wait
     def create_playlist(self, name, tracks: List[spotify.Track] = None):
         # TODO: Longest playlist name is 100 chars, add exception handling
+        # TODO: This might live in the user class
         """Creates a playlist in the user's library and adds supplied tracks in batches of 100."""
         user_id = self.fetch_user().id
         name = self.unique_playlist_name(name)
@@ -114,7 +130,11 @@ class SpotifySession:
 
         This is a separate function because each state-modifying request needs a separate decorator to catch a timeout.
         """
+        # TODO: It's awkward that some methods (create_playlist) handle batching lists implicitly, while this raises
         # TODO: Add handling for invalid playlist or track parameters
+
+        # TODO: This probably should be more related to the Playlist class, but in general
+        # TODO: this is part of the problem of committing local changes to Spotify
         if len(tracks) > 100:
             raise SpotifyToolsException("Adding tracks to playlist limited to 100 at a time.")
         self.connection.playlist_add_items(playlist.uri, [track.uri for track in tracks])
@@ -124,6 +144,7 @@ class SpotifySession:
     def fetch_user_playlists(self, user: spotify.User):
         """Return all publicly visible playlists from the library of user with given id."""
         # TODO: Add handling for invalid user parameter
+        # TODO: This should be part of the User class
         results = []
         has_next = True
         i = 0
@@ -145,6 +166,7 @@ class SpotifySession:
             self.connected_user = self.factory.get_resource(user_data)
         return self.connected_user
 
+    # TODO: Next 3 methods could possibly be part of the User class, maybe even a new Playback class
     @authorized
     @timeout_wait
     def queue(self, tracks):
@@ -187,18 +209,22 @@ class SpotifySession:
 
     @timeout_wait
     def fetch_item(self, uri, reload=False, raw=False):
-        if uri not in self.factory.cache or reload or raw:
-            url = uri_to_url(uri)
-            response = self.connection._get(url)
-            return response if raw else self.factory.get_resource(response)
-        else:
-            return self.factory.cache[uri]
+        # Check cache
+        if not (reload or raw):
+            cached = self.factory.search_cache(uri)
+            if cached:
+                return cached
+        # Request for a new resource
+        url = uri_to_url(uri)
+        response = self.connection._get(url)
+        return response if raw else self.factory.get_resource(response)
 
     @timeout_wait
     def fetch_artist_top_tracks(self, artist, keep_duplicates=False):
         """
         Returns artist's 10 top tracks.
         """
+        # TODO: This should be in the Artist class
         response = self.connection.artist_top_tracks(artist.uri)
         tracks = [self.factory.get_resource(track) for track in response['tracks']]
         # TODO: This shouldn't be here
@@ -209,6 +235,7 @@ class SpotifySession:
 
     @timeout_wait
     def fetch_related_artists(self, artist):
+        # TODO: This should be in the Artist class
         response = self.connection.artist_related_artists(artist.uri)
         return [self.factory.get_resource(artist) for artist in response['artists']]
 
@@ -222,8 +249,13 @@ class SpotifySession:
     def load_details(self, items):
         return self.load(items, details=True)
 
+    def load_lyrics(self, items):
+        return self.load(items, lyrics=True)
+
     # TODO: Add a decorator for making single item arguments into a list
-    def load(self, items: List[spotify.Resource], details=False, features=False, children=False):
+    def load(self, items: List[spotify.Resource], details=False, features=False, children=False, lyrics=False):
+        # TODO: Kind of doubtful about the division or responsibilities between this here and ResourceFactory.
+        # TODO: It should be reviewed after the class-specific code is cleared out and it becomes more transparent.
         """
         Downloads and updates details and features for a list of resources.
 
@@ -232,16 +264,25 @@ class SpotifySession:
         There are cases where some tracks in a collection are missing their details, while others are missing features.
         """
 
+        # If no case is specified, load everything.
+        if not any([details, features, children, lyrics]):
+            details = True
+            features = True
+            children = True
+            lyrics = True
+
         # TODO: Make this more elegant
         if not isinstance(items, list):
             items = [items]
 
+        # TODO: These definitions don't need to live in the method
+        # TODO: cases is not a good name
         # TODO: Add cases for all types
         # TODO: Add logic for recursive loading (for example load playlist tracks and their features in one call)
-        # Define request limit, methods for requesting and parsing respectively for each requested resource.
+        # Define request limit, methods for requesting and parsing respectively for each possible resource.
         cases = {
             'features': {
-                spotify.Track: (self._track_features, self._match_features, 100),
+                spotify.Track: (self._audio_features, self._match_features, 100),
             } if features else None,
             'details': {
                 spotify.Track: (self._track_details, self._match_details, 50),
@@ -254,12 +295,18 @@ class SpotifySession:
                 spotify.Album: (self._album_tracks, self._parse_children, 50),
                 spotify.Artist: (self._artist_albums, self._parse_children, 50),
             } if children else None,
+            'lyrics': {
+                spotify.Track: (self._genius_features, self._match_lyrics, 1),
+            } if lyrics else None,
         }
 
+        # TODO: The name _fetch_bulk_details is confusing, because "details" here can mean one of the three - details, features, or lyrics; perhaps it should be changed to _fetch_bulk_information
+        # Fetch method controls how the items are processed by the request method.
         fetch_methods = {
             'details': self._fetch_bulk_details,
             'features': self._fetch_bulk_details,
             'children': self._fetch_bulk_children,
+            'lyrics': self._fetch_bulk_details,
         }
 
         # Separate the items into lists by type.
@@ -306,14 +353,22 @@ class SpotifySession:
 
     def _parse_children(self, item, children):
         # TODO: removing duplicates should be implemented early on before any sort of recursion kicks in
+        # TODO: Kinda wish there was only 1 entrypoint into ResourceFactory instead of here + _match_details
         children = [self.factory.get_resource(child) for child in children]
         item.children.extend(children)
         item.children_loaded = True
 
     @timeout_wait
-    def _track_features(self, tracks: List[spotify.Track]):
+    def _audio_features(self, tracks: List[spotify.Track]):
         return self.connection.audio_features([track.uri for track in tracks])
 
+    @timeout_wait
+    def _genius_features(self, track: List[spotify.Track]):
+        # TODO: Add a method to Resource for returning a nice, exhaustive query string
+        track = track[0]  # TODO: # Replace this with a decorator
+        return self.genius_session.get_features(track.name + track.artists[0].name)
+
+    # TODO: These look like they should live in their respective classes
     @timeout_wait
     def _artist_details(self, artists: List[spotify.Artist]):
         return self.connection.artists([artist.uri for artist in artists])['artists']
@@ -330,6 +385,9 @@ class SpotifySession:
     def _album_details(self, albums: List[spotify.Album]):
         return self.connection.albums([album.uri for album in albums])['albums']
 
+    # TODO: Name and docstrings of these 'match' methods are weirdly worded
+    # TODO: "match_details" esp. on the background on the next 2 methods doesn't really reflect that's where the
+    # TODO: connection to the hugely important ResourceFactory class happens
     def _match_details(self, items: List[spotify.Resource], details):
         """"""
         for i in range(len(items)):
@@ -340,12 +398,23 @@ class SpotifySession:
                 # Another edge case that has never happened so far
                 raise SpotifyToolsException(f"Failed to fetch details for {items[i].uri}.")
 
+    # TODO: This method accepts a "lyrics" arg when in fact it contains genius metadata, and not necessarily the lyrics
+    # TODO: Next 2 functions are specific to the Track class just looking at their type hints, so maybe they should live there
+    @staticmethod
+    def _match_lyrics(track: List[spotify.Track], lyrics):
+        """Adapt the features and pass them to each track for parsing."""
+        track = track[0]  # TODO: # Replace this with a decorator
+        track.genius_features = lyrics
+
     @staticmethod
     def _match_features(tracks: List[spotify.Track], features):
         """Adapt the features and pass them to each track for parsing."""
         for i in range(len(tracks)):
-            tracks[i].parse_features(features_adapter(features[i]))
+            # TODO: Check that this is the only place track features make it into the system, otherwise this is not the right place to adapt features
+            features_data = adapt_audio_features(features[i])
+            tracks[i].audio_features = spotify.AudioFeatures(features_data)
 
+    # TODO: Next 3 are also class-specific
     @timeout_wait
     def _playlist_tracks(self, playlist, offset):
         """Download all tracks from spotify for a playlist URI."""

@@ -68,11 +68,15 @@ class TestSpotifySession:
 
     def test__add_to_playlist_exception(self, sp):
         """Assert passing more than 100 tracks raises an exception."""
+        # TODO: It's awkward test_create_playlist excepts > 100 tracks to be handled implicitly
+        # TODO: but this expects an error
         with pytest.raises(SpotifyToolsException):
             sp._add_to_playlist(Mock(), [Mock() for i in range(101)])
 
     def test_fetch_user_playlists(self, sp):
         """Assert that the function makes requests until the downloaded resources are complete and parses them."""
+        # TODO: There's a 50 playlist limit per request - test for that
+        # TODO: Tests shouldn't rely on methods from the spotipy library
         # Setup
         raw_item = Mock()
         parsed_item = Mock()
@@ -134,19 +138,23 @@ class TestSpotifySession:
         # Call the method with each possible combination of bool parameters.
         for p in list(itertools.product(*(parameters,) * 3)):
             sp.load(mock_items, *p)
-            # Assert each method is called once for each type of resource if requested.
-            assert sp._fetch_bulk_details.call_count == (4 if p[0] else 0) + (1 if p[1] else 0)
-            assert sp._fetch_bulk_children.call_count == (3 if p[2] else 0)
+            if any(p):
+                # Assert each method is called once for each type of resource if requested.
+                assert sp._fetch_bulk_details.call_count == (4 if p[0] else 0) + (1 if p[1] else 0)
+                assert sp._fetch_bulk_children.call_count == (3 if p[2] else 0)
+            else:
+                # In absence of specific arguments, everything should be loaded implicitly.
+                assert sp._fetch_bulk_details.call_count == 6
+                assert sp._fetch_bulk_children.call_count == 3
             sp._fetch_bulk_details.reset_mock()
             sp._fetch_bulk_children.reset_mock()
 
     def test_load_bulk_empty(self, load_bulk_setup):
-        """Test that load bulk doesn't have effect when called without parameters."""
+        """Test that load doesn't have effect when called without parameters."""
         # Setup
         sp, mock_items = load_bulk_setup
         # Calls
         sp.load([], details=True, features=True, children=True)
-        sp.load(mock_items)
         # Assertions
         assert sp._fetch_bulk_details.call_count == 0
         assert sp._fetch_bulk_children.call_count == 0
@@ -172,7 +180,7 @@ class TestSpotifySession:
         # Call
         sp.load_features(mock_track)
         # Assertion
-        sp._fetch_bulk_details.assert_called_once_with([mock_track], sp._track_features, sp._match_features, 100)
+        sp._fetch_bulk_details.assert_called_once_with([mock_track], sp._audio_features, sp._match_features, 100)
 
     def test_load_details(self, sp):
         # Setup

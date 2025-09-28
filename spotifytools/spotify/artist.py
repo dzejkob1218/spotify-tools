@@ -1,9 +1,16 @@
+from typing import List, Dict, Union
 import spotifytools.spotify as spotify
 from spotifytools.spotify.album import Album
 
 
 class Artist(spotify.Resource, spotify.Collection):
     child_type = Album
+
+    # TODO: keep the followers dict or just keep the count (['followers']['total'])
+    followers: Dict[str, Union[None, int]]  # A dictionary containing information about the artist's followers.
+    genres: List[str]  # A list of genres associated with the artist.
+    images: List[spotify.Image]  # A list of images associated with the artist.
+    popularity: int  # Relative recent popularity of the artist (0 - 100).
 
     def __init__(self, sp, raw_data, children=None):
         spotify.Resource.__init__(self, sp, raw_data)

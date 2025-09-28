@@ -1,5 +1,5 @@
 from typing import List
-from spotifytools.filters import Filter
+from spotifytools.filters.resource_filter import ResourceFilter
 import spotifytools.spotify as spotify
 from spotifytools.spotify.resource import Resource
 
@@ -12,7 +12,6 @@ class Collection(spotify.Object):
         self.sp = sp  # TODO: Look into making resource ignorant of the session.
         self.name = name or self.name  # Replace name only if specified.
         self.children: List[spotify.Object] = children or []
-        self.filters: List[Filter] = []
         self.children_loaded = children_loaded
         # TODO: Make features work as they do in Track, where None is unloaded and False means unavailable.
         self.features = {}  # Average values of child details.
@@ -48,7 +47,7 @@ class Collection(spotify.Object):
         else:
             return sum(child.count_tracks() for child in self.get_children())
 
-    # TODO: Merge details and features
+
     def get_features(self, reload=False):
         # TODO: Add quantitive features; most popular artists, languages
         """
@@ -78,3 +77,7 @@ class Collection(spotify.Object):
                     self.features[detail] = sums[detail]['sum']/sums[detail]['count']
         return self.features
 
+    def filtered(self, filters: List[ResourceFilter]):
+        # TODO: Add decorator for a single filter being passed
+        filtered_items = filter(lambda item: all(fil.condition(item) for fil in filters), self.children)
+        return list(filtered_items)

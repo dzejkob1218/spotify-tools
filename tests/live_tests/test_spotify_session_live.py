@@ -96,18 +96,22 @@ class TestSpotifySession:
         for item in [album, playlist, artist]:
             assert item.children_loaded
 
+    # TODO: This should check that genius data isn't requested
     def test_load_features(self, sp, featured_content):
+        """ Test loading audio features for a number of featured tracks. """
         # Setup
         album = featured_content['albums'][0]
-        tracks = featured_content['tracks']
+        tracks = featured_content['tracks'][:10]
         items = tracks + [album]
         for track in tracks:
-            # Remove features
-            track.features = None
+            # Remove possible cached features
+            track.audio_features = None
+            track.genius_features = None
         # Call
-        sp.load_features(items)
+        sp.load_features(tracks)
         # Assertions
-        assert all(track.features is not None for track in tracks)  # Some tracks have empty dict for features.
+        assert all(track.audio_features is not None for track in tracks)  # Some tracks have empty dict under features.
+        assert all(track.genius_features is None for track in tracks)  # Genius features shouldn't be loaded (slow).
 
     def test_load_details(self, sp, featured_content):
         # Setup

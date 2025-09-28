@@ -17,6 +17,6 @@ Filters have:
 """
 
 
-class Filter:
-    def filter_collection(self, items: List[spotify.Object]):
+class ResourceFilter:
+    def condition(self, item):
         pass

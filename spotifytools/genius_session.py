@@ -1,3 +1,5 @@
+import spotifytools.spotify as spotify
+import requests
 from spotifytools.helpers import uniform_title
 from fuzzywuzzy import fuzz
 from lyricsgenius import Genius
@@ -8,7 +10,38 @@ class GeniusSession:
     NO_LYRICS_PLACEHOLDER = 'No lyrics available.'
 
     def __init__(self):
-        self.connection = Genius(os.environ.get("GENIUS_SECRET"))
+        self.token = os.environ.get("GENIUS_TOKEN")
+        self.connection = Genius(self.token)
+        self.header = headers = {'Authorization': 'Bearer ' + self.token}
+
+    def get_features(self, query):
+        """
+        Get genius features from a query preferably consisting of a title and artists.
+
+        This function makes a direct call to the genius API without using lyricsgenius.
+
+        """
+        # TODO: Should this be replaced with lyricsgenius entirely?
+        # TODO: Rip solutions from geniuslyrics
+        url = 'https://genius.com/api/search'
+        params = {'q': query}
+
+        # Set the API headers with the access token
+
+        # Make the API request
+        response = requests.get(url, params=params, headers=self.header)
+
+        # TODO: Check the hits instead of blindly going with the first one
+        hits = response.json()['response']['hits']
+        if hits:
+            hit_id = hits[0]['result']['id']
+            response = requests.get('https://api.genius.com/songs/' + str(hit_id), headers=self.header).json()
+
+            data = response['response']['song']
+            return spotify.GeniusFeatures(data)
+        else:
+            return None
+
 
     def get_lyrics(self, track):
         """Search genius.com for lyrics to a song

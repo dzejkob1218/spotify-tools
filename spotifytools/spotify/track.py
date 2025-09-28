@@ -1,49 +1,43 @@
+from typing import List
 import spotifytools.spotify as spotify
-
-from spotifytools.helpers import detect_language, features_adapter
-from spotifytools.genius_session import GeniusSession
-
 
 # TODO: Add recommendation methods.
 class Track(spotify.Resource):
+
+    # TODO: Bring back language estimation since not all tracks have genius pages
+
+    available_markets: List[str]  # A list of market tags where the content is available.
+    disc_number: int  # The disk of the album on which the track was released (starting with 1).
+    duration_ms: int  # Duration of track in milliseconds.
+    explicit: bool  # True if the track contains explicit lyrics.
+    popularity: int  # Relative recent popularity (0 - 100).
+    preview_url: str  # Url at which a free 30 second mp3 clip of the track is available.
+    track_number: int  # Number of the track on the album (starting with 1).
+
     def __init__(self, sp, raw_data, artists, album):
-        self.artists = artists
-        self.album = album
+        self.artists: List[spotify.Artist] = artists  # Artists who released and featured on the track.
+        self.album: spotify.Album = album  # Album on which the track was released.
         super().__init__(sp, raw_data)
-        self.lyrics = None
-        # self.language = helpers.quick_language(self) # Takes approx. half a second
-        self.confidence_scores = None
         self.sp = sp
-        self.features = None  # False denotes features not available
+        self.audio_features: spotify.audio_features = None  # False means features unavailable
+        self.genius_features: spotify.genius_features = None
 
     def load(self, recursive=False):
         """Downloads all available data about the track."""
+        # TODO: Should this also include details?
         if not recursive:
             self.get_features()
         self.get_confidence_scores()
         self.get_lyrics()
-        self.get_language()
+        # self.get_language()
 
     # TODO: Add method for completing own details
 
     def get_features(self):
         """Add audio features to track attributes."""
-        if not self.features:
+        if not self.audio_features:
             self.sp.load_features(self)
-        return self.features
-
-    def get_lyrics(self):
-        if not self.lyrics:
-            self.lyrics = GeniusSession().get_lyrics(self)
-        return self.lyrics
-
-    def get_language(self):
-        self.get_lyrics()
-        if self.lyrics == GeniusSession.NO_LYRICS_PLACEHOLDER:
-            return None
-        if not self.language:
-            self.language = detect_language(self.lyrics)
-        return self.language
+        return self.audio_features
 
     def get_confidence_scores(self):
         """
@@ -72,7 +66,7 @@ class Track(spotify.Resource):
         Some default Spotify names for the features are aliased to be shorter.
         """
         # TODO: Look into loading features through Resource parse_details route
-        self.features = bool(features)
+        self.audio_features = bool(features)
         if features:
             self.details.update(features)
             self.__dict__.update(features)

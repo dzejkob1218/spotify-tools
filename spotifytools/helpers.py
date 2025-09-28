@@ -5,7 +5,7 @@ import langdetect
 from langcodes import Language
 
 
-def details_adapter(details):
+def adapt_details(details):
     """
     Processes resource data from Spotify API for easier processing.
     """
@@ -40,7 +40,7 @@ def details_adapter(details):
     return parsed_details
 
 
-def features_adapter(features):
+def adapt_audio_features(features):
     """
     Processes track audio features from Spotify API for easier processing.
 
@@ -60,7 +60,8 @@ def features_adapter(features):
         'acousticness': 'acoustic',
         'instrumentalness': 'instrumental',
         'liveness': 'live',
-        'time_signature': 'signature'
+        'time_signature': 'signature',
+        'duration_ms': 'duration'
     }
 
     parsed_features = {}

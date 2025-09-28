@@ -1,7 +1,6 @@
-from spotifytools.filters.filter import Filter
+from spotifytools.filters.resource_filter import ResourceFilter
 
-
-class Attribute(Filter):
+class Attribute(ResourceFilter):
     # TODO: A list of all possible attributes including descriptions should be available somewhere
     # TODO: Should these be classes?
     viable_attributes = {
@@ -67,7 +66,7 @@ class Attribute(Filter):
         self.max = _max
         self.reverse = _reverse
 
-    def filter(self, item):
+    def condition(self, item):
         if self.attribute_type == "boolean":
             return bool(item.attributes[self.attribute]) != self.reverse
         if self.attribute_type in ["percentage", "integer"]:

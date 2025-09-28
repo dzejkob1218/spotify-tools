@@ -43,7 +43,7 @@ class TestResourceFactory:
         assert not factory._parse_resource.mock_calls
 
     def test_get_resource_duplicate(self, factory):
-        """Assert a new resource is not created when an resource of the same URI is available in the cache."""
+        """Assert a new resource is not created when a resource of the same URI is available in the cache."""
         # Setup
         mock_uri = Mock()
         mock_data = {'uri': mock_uri, 'not missing': 'data'}
@@ -88,7 +88,6 @@ class TestResourceFactory:
         assert factory.get_resource.mock_calls == [call(mock_owner_data), call(mock_child_data)]
         assert mock_playlist.mock_calls[0] == call(factory.sp, raw_data=mock_data, owner=mock_resource, children=[mock_resource],
                                                    children_loaded=False)
-
 
     @patch('spotifytools.resource_factory.filter_false_tracks')
     @patch('spotifytools.resource_factory.spotify.Album')
